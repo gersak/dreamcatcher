@@ -1,6 +1,6 @@
 (ns dreamcatcher.core
   (:use [dreamcatcher.util :only (get-state-mapping get-transitions get-validators)])
-  (:use-macros [dreamcatcher.macros :only (add-statemachine-mapping)]))
+  (:use-macros [dreamcatcher.macros :only (add-statemachine-mapping) :reload true]))
 
 
 
@@ -37,7 +37,8 @@
   ([transitions validators dynamic]
    (let [stm (atom nil)
          t (partition 3 transitions)
-         states (-> (map #(take 2 %) t) flatten set)]
+         states (->> (map #(take 2 %) t) (map flatten) flatten set)]
+     (println t)
      (doseq [x states] (add-state stm x))
      (doseq [x t] (apply add-transition (conj x stm)))
      (if dynamic stm @stm))))
@@ -103,6 +104,9 @@
 (defn ^:export assoc-data [instance new-data]
   (swap! instance assoc :data (merge (get-data instance) new-data)))
 
+(defn ^:export reset-state! [instance new-state]
+  (swap! instance assoc :state new-state))
+
 (defn ^:export move [instance to-state]
   "Makes attemp to move machine instance to next state."
   (if-let [stm (get-stm instance)] 
@@ -116,3 +120,10 @@
           (swap! instance assoc :state to-state)))
       instance)
     nil))
+
+
+
+(def test-stm (make-state-machine [:opened :closed (fn [_] (println "Closing!"))
+                                   :closed :opened (fn [_] (println "Opening!"))
+                                   [:opened :closed] :stuck (fn [_] (println "Stuck!"))
+                                   :stuck [:opene :closed] (fn [_] (println "Breakthrough!"))]))

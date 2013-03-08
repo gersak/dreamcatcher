@@ -8,11 +8,14 @@
         remover (symbol (str "remove-" fun-name))]
     `(do
        (defn ~adder [stm# from-state# to-state# fun#]
-         (when (fn? fun#)
-           (assert (contains? @stm# from-state#) (str "There is no " from-state# " in " stm#))
-           (assert (contains? @stm# to-state#) (str "There is no " to-state# " in " stm#))
-           (swap! stm# #(assoc % from-state# (assoc (get-state-mapping @stm# from-state#)
-                                                    ~mapping (merge (get-transitions @stm# from-state#) (hash-map to-state# fun#)))))))
+         (let [from-states# (if-not (coll? from-state#) (vector from-state#) from-state#)
+                to-states# (if-not (coll? to-state#) (vector to-state#) to-state#)]
+            (when (fn? fun#)
+              (map #(assert (contains? @stm# %) (str "There is no " % " in " stm#)) from-states#)
+              (map #(assert (contains? @stm# %) (str "There is no " %" in " stm#)) to-states#)
+              (doseq [x# from-states# y# to-states#]
+                (swap! stm# #(assoc % x# (assoc (get-state-mapping @stm# x#)
+                                               ~mapping (merge (get-transitions @stm# x#) (hash-map y# fun#)))))))))
        (defn ~remover [stm# from-state# to-state#]
          (do 
            (assert (and (contains? @stm# from-state#) (contains? @stm# to-state#)) "STM doesn't contain all states")

@@ -1,5 +1,5 @@
 (ns dreamcatcher.core
-  (:use dreamcatcher.macros
+  (:use [dreamcatcher.macros :reload true]
         dreamcatcher.util))
 
 
@@ -118,9 +118,10 @@
     (throw (Exception. "There is no state machine configured for this instance."))))
 
 
-(def test-stm (make-state-machine [:opened :closed (fn [_] (throw (Exception. "No way!")))
-                                   :opened :opened (fn [_] "already opened")
-                                   :closed :opened (fn [_] "oppening")
-                                   :closed :closed (fn [_] "already closed")] nil false))
-
-(def im (get-machine-instance test-stm :closed))
+;;(def test-stm (make-state-machine [:opened :closed (fn [_] (println "Closing!"))
+;;                                   :closed :opened (fn [_] (println "Opening!"))
+;;                                   [:opened :closed] :stuck (fn [_] (println "Stuck!"))
+;;                                   :stuck [:opened :closed] (fn [_] (println "Breakthrough!"))]))
+;;
+;;
+;;(def im (get-machine-instance test-stm :closed))
