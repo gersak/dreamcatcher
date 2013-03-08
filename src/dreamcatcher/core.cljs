@@ -125,4 +125,4 @@
 (def test-stm (make-state-machine [:opened :closed (fn [_] (println "Closing!"))
                                    :closed :opened (fn [_] (println "Opening!"))
                                    [:opened :closed] :stuck (fn [_] (println "Stuck!"))
-                                   :stuck [:opene :closed] (fn [_] (println "Breakthrough!"))]))
+                                   :stuck [:opened :closed] (fn [_] (println "Breakthrough!"))]))

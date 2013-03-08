@@ -8,8 +8,8 @@
         remover (symbol (str "remove-" fun-name))]
     `(do
        (defn ~adder [stm# from-state# to-state# fun#]
-         (let [from-states# (if-not (coll? from-state#) (vector from-state#) from-state#)
-                to-states# (if-not (coll? to-state#) (vector to-state#) to-state#)]
+         (let [from-states# (if-not (coll? from-state#) (list from-state#) from-state#)
+                to-states# (if-not (coll? to-state#) (list to-state#) to-state#)]
             (when (fn? fun#)
               (map #(assert (contains? @stm# %) (str "There is no " % " in " stm#)) from-states#)
               (map #(assert (contains? @stm# %) (str "There is no " %" in " stm#)) to-states#)
