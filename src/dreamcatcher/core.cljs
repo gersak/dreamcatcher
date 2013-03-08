@@ -37,8 +37,7 @@
   ([transitions validators dynamic]
    (let [stm (atom nil)
          t (partition 3 transitions)
-         states (->> (map #(take 2 %) t) (map flatten) flatten set)]
-     (println t)
+         states (-> (map #(take 2 %) t) flatten set)]
      (doseq [x states] (add-state stm x))
      (doseq [x t] (apply add-transition (conj x stm)))
      (if dynamic stm @stm))))
