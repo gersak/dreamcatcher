@@ -2,7 +2,6 @@
 
 (defn get-state-mapping [stm state]
   (when stm
-    (println stm)
     (get stm state)))
 
 (defn get-transitions [stm state]
