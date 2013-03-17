@@ -1,3 +1,5 @@
+;*CLJSBUILD-MACRO-FILE*; 
+
 (ns dreamcatcher.macros
   (:use dreamcatcher.util))
 
