@@ -37,9 +37,11 @@
   ([transitions validators dynamic]
    (let [stm (atom nil)
          t (partition 3 transitions)
+         v (partition 3 validators)
          states (-> (map #(take 2 %) t) flatten set)]
      (doseq [x states] (add-state stm x))
      (doseq [x t] (apply add-transition (conj x stm)))
+     (doseq [x v] (apply add-validator (conj x stm)))
      (if dynamic stm @stm))))
 
 
@@ -52,20 +54,22 @@
 ;; I can't  see any other easy way to have many instances
 ;; conveying rules of one state machine autamata.
 
+(declare get-data)
 
 
-(defn nilfn [_] nil)
+(defn nilfn [x] x)
 
 (defn get-stm [instance]
   (if (map? instance) @(:stm instance) @(:stm @instance)))
 
-(defn get-reachable-states [instance]
+(defn get-reachable-states 
   "Returns reachable states from positon of instance
   wihtin state machine."
+  [instance]
   (keys (get-transitions instance (get-stm instance))))
 
 
-(defn valid-transition? [instance from-state to-state]
+(defn valid-transition? 
   "Computes if transition from-state to to-state is valid.
   If there is any type of validator function will try to
   evaluate if transition is valid based on current data.
@@ -73,8 +77,9 @@
   If there is no validator than transition is valid.
   
   If validator is not a function, transition is valid."
+  [instance from-state to-state]
   (if-let [vf (get (:validators (get-state-mapping (get-stm instance) from-state)) to-state)]
-    (when (fn? vf) (vf (:data instance)))
+    (when (fn? vf) (vf (get-data instance)))
     true))
 
 (defn get-machine-instance 
@@ -113,7 +118,7 @@
       (update-in instance [:data] (fn [_] (apply dissoc data keywords)))
       (swap! instance #(update-in % [:data] (fn [_] (apply dissoc data keywords)))))))
 
-(defn move [instance to-state]
+(defn move 
   "Makes attemp to move machine instance to next state. Instance
   input has to be clojure.lang.Atom
   
@@ -130,6 +135,7 @@
   from \"from-state\" to :any state with value of @instance before transition.
   
   Return value is changed instance"
+  [instance to-state]
   (if-let [stm (get-stm instance)]
     (do
       (assert (contains? stm to-state) (str "STM doesn't contain " to-state "state"))
@@ -154,9 +160,3 @@
               instance)))))
     (assert false "There is no state machine configured for this instance")))
     ;;(throw (Exception. "There is no state machine configured for this instance."))))
-
-
-(def test-stm (make-state-machine [:opened :closed nilfn 
-                                   :closed :opened nilfn
-                                   :any :closed (fn [_] (println "closing!"))
-                                   :any :opened (fn [_] (println "Openeing!"))]))
