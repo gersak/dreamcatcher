@@ -124,16 +124,19 @@
   Last step of moving \"from-state\" to  \"to-state\" is calling transition
   from \"from-state\" to :any state with value of @instance before transition.
   
-  Return value is changed instance of clojure.lang.Atom"
-  (if-let [stm (get-stm instance)] 
+  Return value is changed instance"
+  (if-let [stm (get-stm instance)]
     (do
       (assert (contains? stm to-state) (str "STM doesn't contain " to-state "state"))
       (when (valid-transition? instance (get-state instance) to-state)
         (let [from-state (get-state instance) 
               tfunction (get-transition stm from-state to-state)
-              in-fun (get-transition stm :any to-state)
-              out-fun (get-transition stm from-state :any)
-              mark @instance]
+              in-fun (or 
+                       (get-transition stm :any to-state)
+                       (get-transition stm "any" to-state))
+              out-fun (or 
+                        (get-transition stm from-state :any)
+                        (get-transition stm from-state "any"))]
           (assert (or tfunction in-fun) (str "There is no transition function from state " from-state " to state " to-state))
           (when out-fun (out-fun @instance)) 
           (when tfunction (tfunction instance))
