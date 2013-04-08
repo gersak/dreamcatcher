@@ -217,21 +217,6 @@
       (swap! x assoc :alive false)
       x)))
 
-;;(defn ^:private remove-element [sequence idx] 
-;;  (vec (concat (subvec sequence 0 idx) (when (>= idx 0) (subvec sequence (inc idx))))))
-;;
-;;(defn ^:private  move-to-last-position [sequence value]
-;;  (let [position (.indexOf sequence value)]
-;;    (if (= -1 position)
-;;      sequence
-;;      (conj (remove-element sequence position) value))))
-;;
-;;(defn remove-choice [sequence value]
-;;  (let [position (.indexOf sequence value)]
-;;    (if (= -1 position)
-;;      sequence
-;;      (remove-element sequence position))))
-
 (defn ^:private move-to-next-choice [x next-choice]
   (let [state (get-state x)
         last-choice (:last-choice x)
