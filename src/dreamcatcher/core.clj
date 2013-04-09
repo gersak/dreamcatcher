@@ -235,17 +235,21 @@
   priority is defined with give-life! function than
   that rules are applied. Otherwise state machine 
   acts free of will...
-  
-  Free will can be :clockwise or "
+
+  Free will can be 
+  :clockwise
+  :fixed
+  :random"
   ([x] (act! x :clockwise))
   ([x m-character]
-    (if-let [instance (if (map? x) x @x)]
-      (do
-        (assert (:alive? instance) "Instance is not alive! First give it life...")
-        (let [available-choices (get-choices instance)]
-          (case m-character
-            :clockwise (move-to-next-choice x (available-choices (-> (.indexOf available-choices (or (:last-choice instance) (:last-state instance) -1))
-                                                                     inc
-                                                                     (rem (count available-choices)))))
-            :random (move-to-next-choice x (available-choices (-> available-choices count rand int))))))
-      (assert false "This is not STM instance"))))
+   (if-let [instance (if (map? x) x @x)]
+     (do
+       (assert (:alive? instance) "Instance is not alive! First give it life...")
+       (let [available-choices (get-choices instance)]
+         (case m-character
+           :clockwise (move-to-next-choice x (available-choices (-> (.indexOf available-choices (or (:last-choice instance) (:last-state instance) -1))
+                                                                    inc
+                                                                    (rem (count available-choices)))))
+           :random (move-to-next-choice x (available-choices (-> available-choices count rand int)))
+           :fixed (move-to-next-choice x (available-choices (or (:last-choice instance) 0))))))
+     (assert false "This is not STM instance"))))
