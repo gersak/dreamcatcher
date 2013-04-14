@@ -247,7 +247,7 @@
        (assert (:alive? instance) "Instance is not alive! First give it life...")
        (let [available-choices (get-choices instance)]
          (case m-character
-           :clockwise (move-to-next-choice x (available-choices (-> (.indexOf available-choices (or (:last-choice instance) (:last-state instance) -1))
+           :clockwise (move-to-next-choice x (available-choices (-> (.indexOf available-choices (or (:last-choice instance) (:last-state instance)))
                                                                     inc
                                                                     (rem (count available-choices)))))
            :random (move-to-next-choice x (available-choices (-> available-choices count rand int)))
