@@ -1,10 +1,10 @@
-(defproject org.roribib/dreamcatcher"1.0.2-SNAPSHOT"
+(defproject org.roribib/dreamcatcher"1.0.2-alpha2"
             :description "Dreamcatcher is a realy small library that
                strives to simulate state machine behavior."
-            :dependencies [[org.clojure/clojure "1.4.0"]]
+            :dependencies [[org.clojure/clojure "1.5.0"]]
             :plugins [[lein-cljsbuild "0.3.0"]
                       [lein-clojars "0.9.1"]]
-            :source-path "src"
+            :source-paths ["src" "src-cljs"]
             ;;:hooks [leiningen.cljsbuild]
             :cljsbuild {:crossovers [dreamcatcher]
                         :crossover-jar true
