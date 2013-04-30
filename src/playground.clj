@@ -1,5 +1,5 @@
 (ns playground 
-  (:use dreamcatcher.core))
+  (:use [dreamcatcher.core :reload true]))
 
 (def door-stm (make-state-machine 
                 [:opened :closed (fn [_] (println "Door: Closed."))
@@ -28,23 +28,24 @@
 
 (def lemming-stm (make-state-machine [:any :waiting (fn [x]
                                                       (println (str (-> x get-data :name) ": Waiting"))
-                                                      (Thread/sleep 1000))
-                                      :any :opening (fn [x]
+                                                      (Thread/sleep (rand 1000)))
+                                      :waiting :opening (fn [x]
                                                       (do 
                                                         (println (str (-> x get-data :name) ": Trying to open the door."))
                                                         (-> x get-data :door (move :opened))))
-                                      :any :closing (fn [x]
+                                      :waiting :closing (fn [x]
                                                       (do
                                                         (println (str (-> x get-data :name) ": Closing the door"))
                                                         (-> x get-data :door (move :closed))))
-                                      :any :locking (fn [x]
+                                      :waiting :locking (fn [x]
                                                       (do
                                                         (println (str (-> x get-data :name) ": Locking"))
                                                         (-> x get-data :door get-data :lock (move :locked))))
-                                      :any :unlocking (fn [x]
+                                      :waiting :unlocking (fn [x]
                                                         (do
                                                           (println (str (-> x get-data :name)": Unlocking"))
                                                           (-> x get-data :door get-data :lock (move :unlocked))))]))
+                                      ;;:closing :die nilfn]))
 
 
 (def lock (get-machine-instance lock-stm :unlocked {:locked false :counter 0}))
@@ -65,7 +66,6 @@
 
 (def running true)
 
-(def agent-john (agent @john))
 
 (defn lemming-life [x]
   (when running
@@ -75,7 +75,19 @@
 
 (def lemmings [{:door door :name "Mirko"} {:door door :name "Stjepan"} {:door door :name "Franjo"} {:door door :name "Marko"} {:door door :name "Sinisa"}])
 
-(def lemming-agents (map #(-> (get-machine-instance lemming-stm :waiting %) deref agent) lemmings))
+(def lemming-agents (map #(-> (get-machine-instance lemming-stm :waiting %) deref give-life! agent) lemmings))
 
 (defn let-lemmings-loose []
   (doseq [x lemming-agents] (send-off x lemming-life)))
+
+;; Act testing
+(give-life! john)
+(def agent-john (agent @john))
+
+(defn act-test [x]
+  (do
+    (when running (send-off *agent* #'act-test))
+    (act! x :random)))
+
+(defn act-test-lemmings []
+  (doseq [x lemming-agents] (send-off x act-test)))
