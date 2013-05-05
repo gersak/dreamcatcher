@@ -106,37 +106,33 @@
 
 (defn swap-data! 
   "Swaps data in STM with function applied
-  to current data in STM"
-  [instance keywrd function]
-  (when (fn? function)
-    (assoc-data instance keywrd (-> instance get-data (get keywrd) function))))
+  to current data in STM. First argument should
+  be function."
+  [instance keywrd & args]
+  (if-let [f (if (fn? (first args)) (first args))]
+    (if (> 2 (count args))
+      (assoc-data instance keywrd (-> instance get-data (get keywrd) f))
+      (assoc-data instance keywrd (apply f (-> instance get-data (get keywrd)) (rest args))))))
 
 (defn remove-data [instance & keywords]
   "Removes data from STM"
   (update-in instance [:data] (fn [_] (apply dissoc (get-data instance) keywords))))
-
 
 (defn concurrent? [x]
   (boolean (some #(instance? % x) [clojure.lang.Atom clojure.lang.Ref])))
 
 ;; Higher order functions
 (defn move 
-  "Makes attemp to move machine instance to next state. Instance
-  input has to be clojure.lang.Atom
+  "Makes attempt to move machine instance to next state. Input
+  argument is machine instance and 3 functions are applied.
 
-  First transition function is called and input value for 
-  transition function is instance itself. So during transition it is possible
-  to change data in this instance. If there is no direct transition function
-  from-state to-state than valid transition is from state :any to \"to-state\".
+  Order of operations is :
 
-  When STM instance is moving \"from-state\" to \"to-state\" it will 
-  make call for transition from state :any to \"to-state\" with value of
-  @instance before transition. 
+  1* from current state -> any state - If there is general outgoing function in current state
+  2* transition fn from state -> next-state - Direct transtion between states
+  3* from any state -> next-state fn - If there is general incoming function in next state
 
-  Last step of moving \"from-state\" to  \"to-state\" is calling transition
-  from \"from-state\" to :any state with value of @instance before transition.
-
-  Return value is changed instance"
+  Return value is map."
   [instance to-state]
   (if-let [stm (get-stm instance)]
     (do
@@ -146,17 +142,15 @@
               tfunction (or (get-transition stm from-state to-state) identity)
               in-fun (or 
                        (get-transition stm :any to-state)
-                       (get-transition stm "any" to-state))
+                       (get-transition stm "any" to-state)
+                       identity)
               out-fun (or 
                         (get-transition stm from-state :any)
-                        (get-transition stm from-state "any"))]
+                        (get-transition stm from-state "any")
+                        identity)]
           (assert (or tfunction in-fun) (str "There is no transition function from state " from-state " to state " to-state))
-          (when out-fun (out-fun instance)) 
-          (when in-fun (in-fun instance))
-          (-> instance (assoc :state to-state) tfunction))))
+          (-> instance out-fun tfunction (assoc :state to-state) in-fun))))
     (assert false (str "There is no state machine configured for this instance: " instance))))
-
-
 
 (defn get-choices 
   "Returns reachable states from current state 

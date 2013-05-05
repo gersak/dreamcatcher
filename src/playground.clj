@@ -1,5 +1,8 @@
 (ns playground 
-  (:use [dreamcatcher.core :reload-all true]))
+  (:use [dreamcatcher.core :reload-all true]
+        hiccup.core
+        hiccup.page
+        [hiccup.element :only (javascript-tag)]))
 
 (def door-stm (make-state-machine 
                 [:opened :closed (fn [_] (println "Door: Closed."))
@@ -80,6 +83,7 @@
   (lemming-act x))
 
 
+
 (def lemmings [{:door door :name "Mirko"} {:door door :name "Stjepan"} {:door door :name "Franjo"} {:door door :name "Marko"} {:door door :name "Sinisa"}])
 
 (def lemming-agents (map #(-> (get-machine-instance lemming-stm :waiting %) give-life! agent) lemmings))
@@ -94,3 +98,6 @@
 
 (defn let-lemmings-live []
   (doseq [x lemming-agents] (send-off x lemming-life)))
+
+
+
