@@ -5,10 +5,10 @@
         [hiccup.element :only (javascript-tag)]))
 
 (def door-stm (make-state-machine 
-                [:opened :closed (fn [_] (println "Door: Closed."))
-                 :closed :opened (fn [_] (println "Door: Opened."))
-                 :closed :closed (fn [_] (println "Door: Already closed"))
-                 :opened :opened (fn [_] (println "Door: Already opened"))]
+                [:opened :closed (fn [x] (println "Door: Closed.") x)
+                 :closed :opened (fn [x] (println "Door: Opened.") x)
+                 :closed :closed (fn [x] (println "Door: Already closed") x)
+                 :opened :opened (fn [x] (println "Door: Already opened") x)]
                 [:opened :closed (fn [x] (if (-> x :lock deref get-data :locked) 
                                            (do (println "You cannot close locked doors. First unlock it!") false)
                                            true))
@@ -62,39 +62,24 @@
 (def john (get-machine-instance lemming-stm :waiting {:door door :name "John"}))
 
 
-(defn lemming-act [x]
-  (let [choice (rand)]
-    (cond
-      (< choice 0.25) (-> x (move :opening) (move :waiting))
-      (and (> choice 0.25) (< choice 0.5)) (-> x (move :locking) (move :waiting))
-      (and (> choice 0.5) (< choice 0.75)) (-> x (move :unlocking) (move :waiting))
-      (> choice 0.75) (-> x (move :closing) (move :waiting))
-      :else (-> x (move :waiting)))))
-
 (def running true)
 
 (def agent-john (-> john give-life! agent))
 
 (def john (-> john give-life! atom))
 
-(defn lemming-life [x]
-  (when running
-    (send-off *agent* #'lemming-life))
-  (lemming-act x))
-
-
 
 (def lemmings [{:door door :name "Mirko"} {:door door :name "Stjepan"} {:door door :name "Franjo"} {:door door :name "Marko"} {:door door :name "Sinisa"}])
 
 (def lemming-agents (map #(-> (get-machine-instance lemming-stm :waiting %) give-life! agent) lemmings))
 
-(defn let-lemmings-loose []
-  (doseq [x lemming-agents] (send-off x lemming-life)))
-
 (defn lemming-life [x]
   (when running 
     (send-off *agent* #'lemming-life)
     (act! x :random)))
+
+(defn let-lemmings-loose []
+  (doseq [x lemming-agents] (send-off x lemming-life)))
 
 (defn let-lemmings-live []
   (doseq [x lemming-agents] (send-off x lemming-life)))
