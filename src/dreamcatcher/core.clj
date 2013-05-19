@@ -61,13 +61,13 @@
   "Computes if transition from-state to to-state is valid.
   If there is any type of validator function will try to
   evaluate if transition is valid based on current data.
-  
+
   If there is no validator than transition is valid.
-  
+
   If validator is not a function, transition is valid."
   [instance from-state to-state]
   (if-let [vf (get (:validators (get-state-mapping (get-stm instance) from-state)) to-state)]
-    (when (fn? vf) (vf (get-data instance)))
+    (when (fn? vf) (vf instance))
     true))
 
 (defn get-machine-instance 
@@ -149,7 +149,8 @@
                         (get-transition stm from-state "any")
                         identity)]
           (assert (or tfunction in-fun) (str "There is no transition function from state " from-state " to state " to-state))
-          (-> instance out-fun tfunction (assoc :state to-state) in-fun))))
+          (-> instance out-fun tfunction (assoc :state to-state) in-fun))
+        instance))
     (assert false (str "There is no state machine configured for this instance: " instance))))
 
 (defn get-choices 
@@ -218,10 +219,12 @@
      (do
        (assert (:alive? instance) "Instance is not alive! First give it life...")
        (let [available-choices (get-choices instance)]
-         (case m-character
-           :clockwise (move-to-next-choice x (available-choices (-> (.indexOf available-choices (or (:last-choice instance) (:last-state instance)))
-                                                                    inc
-                                                                    (rem (count available-choices)))))
-           :random (move-to-next-choice x (available-choices (-> available-choices count rand int)))
-           :fixed (move-to-next-choice x (available-choices (or (:last-choice instance) 0))))))
+         (if (seq available-choices)
+           (case m-character
+             :clockwise (move-to-next-choice x (available-choices (-> (.indexOf available-choices (or (:last-choice instance) (:last-state instance)))
+                                                                      inc
+                                                                      (rem (count available-choices)))))
+             :random (move-to-next-choice x (available-choices (-> available-choices count rand int)))
+             :fixed (move-to-next-choice x (available-choices (or (:last-choice instance) 0))))
+           x)))
      (assert false "This is not STM instance"))))
