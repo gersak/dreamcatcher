@@ -1,5 +1,6 @@
 (ns playground 
   (:use [dreamcatcher.core :reload-all true]
+        [dreamcatcher.util :reload-all true]
         hiccup.core
         hiccup.page
         [hiccup.element :only (javascript-tag)]))

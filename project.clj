@@ -4,22 +4,25 @@
   :dependencies [[org.clojure/clojure "1.4.0"]
                  [jayq "2.3.0"]
                  [crate "0.2.4"]
-                 [hiccup "1.0.3"]]
+                 [clj-time "0.5.0"]
+                 [hiccup "1.0.3"]
+                 [prismatic/dommy "0.1.1-SNAPSHOT"]]
   :plugins [[lein-cljsbuild "0.3.0"]
             [lein-clojars "0.9.1"]]
-  :source-path "src"
-  :cljsbuild {:builds {:dev {:source-paths ["src-cljs/dreamcatcher" "src"]
+  :source-paths ["src" "src-cljs"]
+  :profiles {:dev {:source-paths ["dev-src/clj"]}}
+  :cljsbuild {:builds {:dev {:source-paths ["src-cljs/dreamcatcher"]
                              :jar true
                              :compiler {:output-to "js/dreamcatcher.js"
                                         ;;:optimizations :advanced
                                         :optimizations :simple
                                         :pretty-print true}}
-                       :play {:source-paths ["src-cljs/playground" "src"]
+                       :play {:source-paths ["dev-src/cljs/playground"]
                               :compiler {:output-to "js/playground.js"
                                          ;;:optimizations :advanced
                                          :optimizations :simple
                                          :pretty-print true}}
-                       :server {:source-paths ["src-cljs/playground-server"]
+                       :server {:source-paths ["dev-src/cljs/playground-server"]
                                 :compiler {:output-to "js/server.js"
                                            :target :nodejs
                                            :optimizations :simple
