@@ -97,12 +97,13 @@
 
 (defn make-job [name & phases]
   (let [job (atom blank-job-machine)]
-    (loop [job job
-           phases phases]
+    (loop [phases phases]
       (if (empty? phases) 
         (Job. name (agent (-> (get-machine-instance @job :initialize)
                               give-life!)))
-        (recur (add-phase job (first phases) (take-while fn? (rest phases))) (drop-while fn? (rest phases)))))))
+        (recur (do
+                 (add-phase job (first phases) (take-while fn? (rest phases)))
+                 (drop-while fn? (rest phases))))))))
 
 
 (def test-job (make-job :test-job 
@@ -110,19 +111,6 @@
                         :test2 (fn [x] (println "Testis 2") x)
                         :test3 (fn [x] (println "Testis 3") x)))
 
-
-;;division by zero:
-;;
-;;(send bond (fn [x] (/ x 0)))(def bond (agent 7))
-;;
-;;(defn err-handler-fn [ag ex]
-;;  (println "evil error occured: " ex " and we still have value " @ag))
-;;
-;;  (set-error-handler! bond err-handler-fn)
-;;
-;;  ;;division by zero:
-;;  ;;
-;;  ;;(send bond (fn [x] (/ x 0)))  kkkkkkkkkkkkkk
 
 ;; Tests
 
