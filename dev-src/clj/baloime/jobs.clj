@@ -5,13 +5,15 @@
                                                       :end :finished (fn [x] (assoc-data x "*ended-at*" (t/now)))]))
 
 (defn job-life [x]
-  (if (= :finished (get-state x)) x
+  (if (or (= :finished (get-state x)) (= false (-> x get-data (get "*running*"))))
+    x
     (do
       (send-off *agent* #'job-life)
       (act! x))))
 
 (defn- get-next-phase [job phase]
-  (-> job phase :transitions first key))
+  (let [t (-> job phase :transitions)] 
+    (when (seq t) (-> t first key))))
 
 (defn ^:private get-job-phases [job]
   (loop [phase :start
@@ -70,67 +72,120 @@
     job))
 
 (defprotocol JobInfo
-  (get-name [this])
-  (start [this])
-  (current-phase [this])
-  (get-phases [this])
-  (started-at? [this])
-  (ended-at? [this])
-  (finished? [this])
-  (duration? [this]))
+  (current-phase [this] "Returns current phase that job-agent is working on")
+  (get-phases [this] "Lists all Job phases")
+  (started-at? [this] "Returns org.joda.time.DateTime timestamp")
+  (ended-at? [this] "Returns org.joda.time.DateTime timestamp")
+  (finished? [this] "Returns true is job is in :finished state")
+  (active? [this] "Returns true if job is running")
+  (duration? [this] "Returns duration of job in milliseconds")
+  (in-error? [this] "Returns error exception if it happend. Otherwise nil"))
+
+(defprotocol JobActions
+  (start! [this] "Starts Job. That is sends-off job-agent to do the job. If Job
+                 was previously stoped than it continues from last phase.")
+  (stop! [this] "Stops running Job. If Job will allways try to complete current phase.
+                If validator doesn't allow execution to continue than Job is stoped
+                at current phase.")
+  (reset-job! [this] "Returns job to initialized state."))
 
 
-(defrecord Job [job-name job-agent]
+
+(defrecord Job [job-agent]
   JobInfo
-  (get-name [this] (identity job-name))
-  (get-phases [this] (-> @job-agent get-stm get-job-phases ))
-  (start [this] (send-off job-agent job-life))
-  (current-phase [this] (get-state @job-agent))
+  (get-phases [this] (-> @job-agent get-stm get-job-phases))
+  (current-phase [this] (or 
+                          (get-next-phase (get-stm @job-agent) (get-state @job-agent))
+                          (get-state @job-agent)))
   (started-at? [this] (-> @job-agent get-data (get "*started-at*")))
   (ended-at? [this] (-> @job-agent get-data (get "*ended-at*")))
   (finished? [this] (= :finished (get-state  @job-agent)))
   (duration? [this] (if (.finished? this)
-                      (-> (t/interval (.started-at? this) (.ended-at? this)) t/in-msecs))))
-;;
+                      (-> (t/interval (.started-at? this) (.ended-at? this)) t/in-msecs)))
+  (in-error? [this] (agent-error job-agent))
+  (active? [this] (-> @job-agent get-data (get "*running*") (not= false)))
+  JobActions
+  (start! [this] (do
+                   (send job-agent #(assoc-data % "*running*" true))
+                   (await job-agent)
+                   (send job-agent job-life)))
+  (stop! [this] (do
+                  (send job-agent #(assoc-data % "*running*" false))
+                  (await job-agent)))
+  (reset-job! [this] 
+    (if (agent-error job-agent)
+      (restart-agent job-agent (-> @job-agent 
+                                   (remove-data (-> @job-agent get-data keys))
+                                   (reset-state! :initialize)))
+      (do
+        (.stop! this)
+        (send job-agent (fn [x] (-> x 
+                                    (clear-data)
+                                    (reset-state! :initialize))))
+        (await job-agent)))))
 
 
-
-(defn make-job [name & phases]
+(defn make-job [phases]
   (let [job (atom blank-job-machine)]
     (loop [phases phases]
       (if (empty? phases) 
-        (Job. name (agent (-> (get-machine-instance @job :initialize)
-                              give-life!)))
+        (Job. (agent (-> (get-machine-instance @job :initialize)
+                         give-life!)))
         (recur (do
                  (add-phase job (first phases) (take-while fn? (rest phases)))
                  (drop-while fn? (rest phases))))))))
 
+(defmacro defjob 
+  "Defines Job record that successively executes
+  functions that are defined as transitions from
+  phase to phase. Transitions are valid if validator
+  function returns true or if validator is not defined."
+  [name & phases]
+  `(def ~name (let [job# (atom ~blank-job-machine)]
+                (loop [phases# ~@phases]
+                  (if (empty? phases#) 
+                    (Job. (agent (-> (get-machine-instance @job# :initialize)
+                                     give-life!)))
+                    (recur (do
+                             (add-phase job# (first phases#) (take-while fn? (rest phases#)))
+                             (drop-while fn? (rest phases#)))))))))
 
-(def test-job (make-job :test-job 
-                        :test1 (fn [x] (println "Testis 1") x) (fn [_] (Thread/sleep 1000) true)
-                        :test2 (fn [x] (println "Testis 2") x)
-                        :test3 (fn [x] (println "Testis 3") x)))
+
+
+(defjob test-job [:test1 (fn [x] (println "Testis 1") x) (fn [_] (Thread/sleep 5000) true)
+                  :test2 (fn [x] (println "Testis 2") x) (fn [_] (Thread/sleep 3000) true)
+                  :test3 (fn [x] (println "Testis 3") x) (fn [_] (Thread/sleep 1000) (println "hanging") false)])
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 ;; Tests
 
-;;(def test-job @(-> (atom blank-job-machine)
-;;                   (add-phase :test1 [(fn [x] 
-;;                                        (Thread/sleep 10000)
-;;                                        (println "Test broj 1")
-;;                                        x)]
-;;                    (add-phase :test2 [(fn [x] 
-;;                                                   (Thread/sleep 10000)
-;;                                                   (println "Test broj 2") 
-;;                                                   x)]))))
+;;(def test-job (make-job :test-job 
+;;                        :test1 (fn [x] (println "Testis 1") x) (fn [_] (Thread/sleep 5000) true)
+;;                        :test2 (fn [x] (println "Testis 2") x) (fn [_] (Thread/sleep 3000) true)
+;;                        :test3 (fn [x] (println "Testis 3") x) (fn [_] (Thread/sleep 1000) (println "hanging") false)))
 
-
-(defn test-add []
-  (let [machine test-job
-        a (agent (-> (get-machine-instance machine :start) give-life!))]
-    (send-off a job-life)
-    (await-for  3000 a)
-    @a))
+;;(def test-error (make-job :test-job 
+;;                          :test1 (fn [x] (println "Testis 1") x) (fn [_] (Thread/sleep 5000) true)
+;;                          :test2 (fn [x] (throw (Exception. "Testing error")) x) (fn [_] (Thread/sleep 2000) true)
+;;                          :test3 (fn [x] (println "Testis 3") x) (fn [_] (Thread/sleep 3000) true)))
+;;
 
 (defn test-insert []
   (let [machine (insert-phase test-job :test1.5 :test1 (fn [x] (println "Test broj 1.5") x) (fn [_] true))
@@ -145,5 +200,4 @@
 
         a (agent (-> (get-machine-instance machine :start) give-life!))]
     (send-off a job-life)
-    ;;(await a)
     a))

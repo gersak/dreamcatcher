@@ -6,7 +6,7 @@
                  [crate "0.2.4"]
                  [clj-time "0.5.0"]
                  [hiccup "1.0.3"]
-                 [prismatic/dommy "0.1.1-SNAPSHOT"]]
+                 [prismatic/dommy "0.1.1"]]
   :plugins [[lein-cljsbuild "0.3.0"]
             [lein-clojars "0.9.1"]]
   :source-paths ["src" "src-cljs"]

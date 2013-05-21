@@ -118,6 +118,11 @@
   "Removes data from STM"
   (update-in instance [:data] (fn [_] (apply dissoc (get-data instance) keywords))))
 
+(defn clear-data [instance]
+  "Removes all data from STM"
+  (assoc instance :data nil))
+
+
 (defn concurrent? [x]
   (boolean (some #(instance? % x) [clojure.lang.Atom clojure.lang.Ref])))
 
