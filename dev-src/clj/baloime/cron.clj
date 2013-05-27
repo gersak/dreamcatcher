@@ -180,7 +180,7 @@
       (:range mapping) (range (-> mapping :range first) (inc (min  max-days (-> mapping :range second))))
       (:sequence mapping) (remove #(> % max-days) (:sequence mapping))
       (:fixed mapping) (if (> (:fixed mapping) max-days) [] [(:fixed mapping)])
-      :else (range 1  (inc (min  max-days (-> mapping :range second)))))))
+      :else (range 1  (inc (t/number-of-days-in-the-month (t/date-time y m)))))))
 
 ;;(defn- next-days [y m mapping]
 ;;  (cond
@@ -216,7 +216,7 @@
 
 (defn- test-find-valid-day? []
   (let [[c t] (current-cron-time?)
-        mapping (parse-cron-string "12 50 10 29 2-4 * 2014")]
+        mapping (parse-cron-string "12 50 10 29 2 * *")]
     (next-timestamp t mapping)))
 
 
