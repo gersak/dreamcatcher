@@ -156,18 +156,8 @@
   (vec (for [x (range 0 (count c))] (valid-element? (c x) (mapping x)))))
 
 
-(defn- valid-wish? [whishes mapping]
+(defn- valid-whish? [whishes mapping]
   (not-any? nil? (evaluate-mapping whishes mapping)))
-
-;;
-;;(defn set-whishes 
-;;  "Sets current cron mapping to next valid value"
-;;  [c m]
-;;  (assert (= (count c) (count m)) "c and m have different size")
-;;  (let [whishes (next-whishes c m)
-;;        evaluation (evaluate-mapping c m)
-;;        next-timestamp (for [x (range 0 (count c))] (if (nil? (evaluation x)) (whishes x) (c x)))]
-;;    (vec next-timestamp)))
 
 (defn- next-years [y mapping]
   (cond
@@ -183,37 +173,50 @@
     (:fixed mapping) [(:fixed mapping)]
     :else (range 1 13)))
 
+
 (defn- next-days [y m mapping]
+  (let [max-days (t/number-of-days-in-the-month (t/date-time y m))]
+    (cond
+      (:range mapping) (range (-> mapping :range first) (inc (min  max-days (-> mapping :range second))))
+      (:sequence mapping) (remove #(> % max-days) (:sequence mapping))
+      (:fixed mapping) (if (> (:fixed mapping) max-days) [] [(:fixed mapping)])
+      :else (range 1  (inc (min  max-days (-> mapping :range second)))))))
+
+;;(defn- next-days [y m mapping]
+;;  (cond
+;;    (:range mapping) (range (-> mapping :range first) (-> mapping :range second inc))
+;;    (:sequence mapping) (:sequence mapping)
+;;    (:fixed mapping) [(:fixed mapping)]
+;;    :else (range 1  (inc (t/number-of-days-in-the-month (t/date-time y m))))))
+
+(defn next-date-time [mapping]
   (cond
     (:range mapping) (range (-> mapping :range first) (-> mapping :range second inc))
     (:sequence mapping) (:sequence mapping)
     (:fixed mapping) [(:fixed mapping)]
-    :else (range 1  (inc (t/number-of-days-in-the-month (t/date-time y m))))))
+    :else (range (:min mapping) (-> mapping :max inc))))
 
-
-(defn- next-timestamp-day 
+(defn- next-timestamp
   "Return next valid timestamp after input 
   timestamp"
   [timestamp mapping]
-  (let [mapping (vec (take 4 (reverse mapping)))
-        current-cron (vec (take 4 (reverse (joda->cron timestamp))))
-        day->joda (fn [c] (apply t/date-time c))
-        joda->day (fn [c] [(t/year c)
-                           (t/month c)
-                           (t/day c)])
-        day-counter (replace current-cron [0 2 3])
+  (let [mapping (vec (reverse mapping))
+        current-cron (vec (reverse (joda->cron timestamp)))
         day-mapping (replace mapping [0 2 3])
         day-of-the-week-mapping (nth mapping 1)
-        found-date (ffirst
-                     (filter seq
-                             (for [y (next-years (day-counter 0) (day-mapping 0)) m (next-months (day-mapping 1))]
-                               (for [d (next-days y m (day-mapping 2)) :while (and (t/after? (t/date-time y m d) timestamp) (valid-wish? [y m d] day-mapping) (valid-element? (t/day-of-week (t/date-time y m d)) day-of-the-week-mapping))]
-                                 [y m d]))))]
-    (when found-date (apply t/date-time found-date))))
+        day-time-mapping (replace mapping [0 2 3 4 5 6])
+        found-dates (for [m (next-months (day-mapping 1)) y (next-years (current-cron 0) (day-mapping 0))]
+                      (for [d (next-days y m (day-mapping 2)) :when (and  (valid-whish? [y m d] day-mapping) (valid-element? (t/day-of-week (t/date-time y m d)) day-of-the-week-mapping))]
+                        (for [h (next-date-time (day-time-mapping 3)) :when (and  (valid-whish? [y m d h] (subvec day-time-mapping 0 4)))]
+                          (for [minutes (next-date-time (day-time-mapping 4)) :when (and  (valid-whish? [y m d h minutes] (subvec day-time-mapping 0 5)))]
+                            (for [s (next-date-time (day-time-mapping 5)) :when (and (t/after? (t/date-time y m d h minutes s) timestamp) (valid-whish? [y m d h minutes s] day-time-mapping))]
+                              [y m d h minutes s])))))
+        found-date (take 6 (flatten found-dates))]
+    (when (seq found-date) (apply t/date-time found-date))))
 
 (defn- test-find-valid-day? []
   (let [[c t] (current-cron-time?)
-        mapping (parse-cron-string "* 10 * 4 12 6 2014-2025")]
+        mapping (parse-cron-string "12 50 10 29 2-4 * 2014")]
     (next-timestamp t mapping)))
 
 
