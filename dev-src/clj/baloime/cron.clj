@@ -1,6 +1,6 @@
 (ns baloime.cron
   (:use dreamcatcher.core
-        [clj-time.local :only (local-now)])
+        [clj-time.local :only (local-now to-local-date-time)])
   (:require [clj-time.core :as t]
             [clj-time.format :as tf]))
 
@@ -78,36 +78,13 @@
 
 (defn current-cron-time? []
   "Returns current local time in CRON format"
-  (let [t (t/now)]
+  (let [t (local-now)]
     [(joda->cron t) t]))
 
 (defn cron->joda [c]
   (let [tc (reverse c) 
         tc (cons (first tc) (subvec (vec tc) 2 7))]
-    (apply t/date-time tc)))
-
-;;(defn- time-difference [x y {maximum :max minimum :min}]
-;;  (if (> x y)
-;;    (- (+ 1 maximum y) x minimum)
-;;    (- y x)))
-;;    
-;;
-;;(defn- time-distance 
-;;  [current-time cron-element-mapping]
-;;  (assert (and (>= (:max cron-element-mapping) current-time) (<= (:min cron-element-mapping) current-time)) (str "Input time out of range: " [(:min cron-element-mapping) (:max cron-element-mapping)]))
-;;  (let [timestamps (cond
-;;                     (:range cron-element-mapping) (range (-> cron-element-mapping :range first) (-> cron-element-mapping :range second inc))
-;;                     (:sequence cron-element-mapping) (-> cron-element-mapping :sequence seq)
-;;                     (:fixed cron-element-mapping) (-> cron-element-mapping :fixed list)
-;;                     :else nil)
-;;        interval-timestamp (+ (:min cron-element-mapping) (mod (+ current-time (:interval cron-element-mapping)) (:max cron-element-mapping)))]
-;;    (if (nil? timestamps) ;; if there are no specific ranges,or fixed values
-;;      (time-difference current-time interval-timestamp (:max cron-element-mapping) (:min cron-element-mapping))
-;;      (time-difference current-time (if (some #(>= % interval-timestamp) timestamps) 
-;;                                      (first (filter #(>= % interval-timestamp) timestamps))
-;;                                      (first timestamps)) (:max cron-element-mapping) (:min cron-element-mapping)))))
-
-
+    (to-local-date-time (apply t/date-time tc))))
 
 (defn- valid-element? [element {:keys [fixed range sequence] :as mapping}]
   (let [fixed? (when fixed 
@@ -118,27 +95,6 @@
                         (if (get sequence element) :sequence))
         valid? (if (every? nil? [fixed range sequence]) :any)]
     (or fixed? belongs? in-range? valid? nil)))
-
-
-;;(defn next-whishes [c mapping]
-;;  "Returns next cron valid values"
-;;  (vec (for [x (range 0 (count c))]
-;;         (cond
-;;           (false? (-> x mapping :fixed nil?)) (-> x mapping :fixed)
-;;           (:sequence (mapping x)) (or (first (filter #(> % (c x)) (:sequence (mapping x)))) (-> x mapping :sequence first))
-;;           (:range (mapping x)) (if (and (>= (c x) (-> x mapping :range first)) (< (c x) (-> x mapping :range second)))
-;;                                  (inc (c x))
-;;                                  (-> x mapping :range first))
-;;           :else nil))))
-;;
-;;
-;;(defn max-step? 
-;;  "Function returns highest loose element of
-;;  evaluated cron value based on mapping."
-;;  [evaluation] 
-;;  (let [e (reverse evaluation)
-;;        steps (filter #(<= 0 %) (map #(.indexOf e %) '(:any :range :sequence)))]
-;;    (- (count e) 1 (apply min (if (empty? steps) '(0) steps)))))
 
 (defn evaluate-mapping 
   "Evaluates current cron based on mapping. Return
@@ -182,13 +138,6 @@
       (:fixed mapping) (if (> (:fixed mapping) max-days) [] [(:fixed mapping)])
       :else (range 1  (inc (t/number-of-days-in-the-month (t/date-time y m)))))))
 
-;;(defn- next-days [y m mapping]
-;;  (cond
-;;    (:range mapping) (range (-> mapping :range first) (-> mapping :range second inc))
-;;    (:sequence mapping) (:sequence mapping)
-;;    (:fixed mapping) [(:fixed mapping)]
-;;    :else (range 1  (inc (t/number-of-days-in-the-month (t/date-time y m))))))
-
 (defn next-date-time [mapping]
   (cond
     (:range mapping) (range (-> mapping :range first) (-> mapping :range second inc))
@@ -205,32 +154,26 @@
         day-mapping (replace mapping [0 2 3])
         day-of-the-week-mapping (nth mapping 1)
         day-time-mapping (replace mapping [0 2 3 4 5 6])
-        found-dates (for [m (next-months (day-mapping 1)) y (next-years (current-cron 0) (day-mapping 0))]
+        found-dates (for [y (next-years (current-cron 0) (day-mapping 0)) m (next-months (day-mapping 1))]
                       (for [d (next-days y m (day-mapping 2)) :when (and  (valid-whish? [y m d] day-mapping) (valid-element? (t/day-of-week (t/date-time y m d)) day-of-the-week-mapping))]
                         (for [h (next-date-time (day-time-mapping 3)) :when (and  (valid-whish? [y m d h] (subvec day-time-mapping 0 4)))]
                           (for [minutes (next-date-time (day-time-mapping 4)) :when (and  (valid-whish? [y m d h minutes] (subvec day-time-mapping 0 5)))]
-                            (for [s (next-date-time (day-time-mapping 5)) :when (and (t/after? (t/date-time y m d h minutes s) timestamp) (valid-whish? [y m d h minutes s] day-time-mapping))]
+                            (for [s (next-date-time (day-time-mapping 5)) :when (and (t/after? (to-local-date-time (t/date-time y m d h minutes s)) timestamp) (valid-whish? [y m d h minutes s] day-time-mapping))]
                               [y m d h minutes s])))))
         found-date (take 6 (flatten found-dates))]
-    (when (seq found-date) (apply t/date-time found-date))))
+    (when (seq found-date) (to-local-date-time (apply t/date-time found-date)))))
 
 (defn- test-find-valid-day? []
   (let [[c t] (current-cron-time?)
-        mapping (parse-cron-string "12 50 10 29 2 * *")]
+        mapping (parse-cron-string "12 15 13 * * * 2013")]
+    (println t)
     (next-timestamp t mapping)))
-
 
 (defn print-cron [cron-string]
   (let [elements (map clojure.string/trim (clojure.string/split cron-string #" "))
-        mapping '("Seconds: " 
-                 "Minutes: "
-                 "Hours: "
-                 "Day of the month: "
-                 "Month: "
-                 "Day of the week: "
-                 "Year: ")]
+        mapping '("Seconds: " "Minutes: " "Hours: " "Day of the month: " "Month: " "Day of the week: " "Year: ")]
     (println (map #(str %) (interleave mapping elements)))))
 
-(def test-string "10 0 1 * 5/1 * *")
+(def test-string "10 0 1 * 5/1 5 2018")
 
 (def cron-mapping (-> test-string parse-cron-string))
