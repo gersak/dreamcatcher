@@ -59,10 +59,12 @@
   of cron-mappings that define what time
   is valid to execute Job."
   [^String cron-record]
-  (let [elements (map clojure.string/trim (clojure.string/split cron-record  #" "))
-        parts (set-constraints (map cron-element-parserer elements))]
+  (let [elements (map clojure.string/trim (clojure.string/split cron-record  #" +"))
+        transform-interval (fn [x] (if-let [interval (:interval x)]
+                                     (dissoc (assoc x :sequence (apply sorted-set (range (or (:fixed x) 0) (-> x :max inc) interval))) :fixed :interval)
+                                     x))
+        parts (map transform-interval (set-constraints (map cron-element-parserer elements)))]
     (assert (and (= (count parts) 7)) "Wrong number of elements passed in. Cron schedule has 7 elements.")
-    (assert (>= 1 (count (re-seq #"/" cron-record))) "Only one interval is supported!")
     (doseq [x parts] (validate-cron-mapping x))
     (vec parts)))
 
@@ -76,10 +78,6 @@
     (assert (= (t/day-of-week t) (c 5)) "Cron day of the week is not valid!")
     t))
 
-(defn current-cron-time? []
-  "Returns current local time in CRON format"
-  (let [t (local-now)]
-    [(joda->cron t) t]))
 
 (defn- valid-element? [element {:keys [fixed range sequence] :as mapping}]
   (let [fixed? (when fixed 
@@ -89,93 +87,53 @@
         belongs? (when sequence 
                    (if (get sequence element) :sequence))
         valid? (if (every? nil? [fixed range sequence]) :any)]
-    (or fixed? belongs? in-range? valid? nil)))
+    (or fixed? belongs? in-range? valid?)))
 
-(defn- evaluate-mapping 
-  "Evaluates current cron based on mapping. Return
-  value is map.
+(defn valid-timestamp? [timestamp cron-string]
+  "Returns true if timestamp is valid."
+  (let [mapping (parse-cron-string cron-string)
+        cron (joda->cron timestamp)
+        evaluated-elements (map #(apply valid-element? %) (partition 2 (interleave cron mapping)))]
+    (not-any? nil? evaluated-elements))) 
 
-  If element is valid, than returned values are:
-
-  :range
-  :sequence
-  :fixed
-
-  Else return value contains nil for each mapping
-  that is not valid."
-  [c mapping]
-  (vec (for [x (range 0 (count c))] (valid-element? (c x) (mapping x)))))
-
-
-(defn- valid-whish? [whishes mapping]
-  "Retruns keyword if whish is valid cron
-  mapping"
-  (not-any? nil? (evaluate-mapping whishes mapping)))
-
-(defn- next-years [y mapping]
-  (cond
-    (:range mapping) (range (-> mapping :range first) (-> mapping :range second inc))
-    (:sequence mapping) (:sequence mapping)
-    (:fixed mapping) [(:fixed mapping)]
-    :else (range y (-> mapping :max inc))))
-
-(defn- next-months [mapping]
-  (cond
-    (:range mapping) (range (-> mapping :range first) (-> mapping :range second inc))
-    (:sequence mapping) (:sequence mapping)
-    (:fixed mapping) [(:fixed mapping)]
-    :else (range 1 13)))
-
-
-(defn- next-days [y m mapping]
-  (let [max-days (t/number-of-days-in-the-month (t/date-time y m))]
-    (cond
-      (:range mapping) (range (-> mapping :range first) (inc (min  max-days (-> mapping :range second))))
-      (:sequence mapping) (remove #(> % max-days) (:sequence mapping))
-      (:fixed mapping) (if (> (:fixed mapping) max-days) [] [(:fixed mapping)])
-      :else (range 1  (inc (t/number-of-days-in-the-month (t/date-time y m)))))))
-
-(defn next-date-time [mapping]
-  (cond
-    (:range mapping) (range (-> mapping :range first) (-> mapping :range second inc))
-    (:sequence mapping) (:sequence mapping)
-    (:fixed mapping) [(:fixed mapping)]
-    :else (range (:min mapping) (-> mapping :max inc))))
-
-(defn- next-cron-timestamp
+(defn next-timestamp
   "Return next valid timestamp after input 
   timestamp"
-  [timestamp mapping]
-  (let [mapping (vec (reverse mapping))
-        current-cron (vec (reverse (joda->cron timestamp)))
-        day-mapping (replace mapping [0 2 3])
-        day-of-the-week-mapping (nth mapping 1)
-        day-time-mapping (replace mapping [0 2 3 4 5 6])
-        found-dates (for [y (next-years (current-cron 0) (day-mapping 0)) 
-                          m (next-months (day-mapping 1))
-                          d (next-days y m (day-mapping 2)) :when (and  (valid-whish? [y m d] day-mapping) (valid-element? (t/day-of-week (t/date-time y m d)) day-of-the-week-mapping))
-                          h (next-date-time (day-time-mapping 3)) :when (valid-whish? [y m d h] (subvec day-time-mapping 0 4))
-                          minutes (next-date-time (day-time-mapping 4)) :when (valid-whish? [y m d h minutes] (subvec day-time-mapping 0 5))
-                          s (next-date-time (day-time-mapping 5)) :when (and (t/after? (to-local-date-time (t/date-time y m d h minutes s)) timestamp) (valid-whish? [y m d h minutes s] day-time-mapping))]
-                      ;;(do (println y m d h minutes s)
+  [timestamp cron-string]
+  (let [mapping (parse-cron-string cron-string)
+        current-cron (replace (joda->cron timestamp) [6 4 3 2 1 0])
+        day-of-the-week-mapping (nth mapping 5)
+        day-time-mapping (replace mapping [6 4 3 2 1 0])
+        found-dates (for [y (range (current-cron 0) 4000) 
+                          :when (valid-element? y (day-time-mapping 0))
+                          m (range 1 13)
+                          :when (valid-element? m (day-time-mapping 1))
+                          d (range 1 (inc (t/number-of-days-in-the-month (t/date-time y m)))) 
+                          :when (and  
+                                  (valid-element? d (day-time-mapping 2))
+                                  (valid-element? (t/day-of-week (t/date-time y m d)) day-of-the-week-mapping)
+                                  (not (t/before? (t/date-time y m d) (apply t/date-time (take 3 current-cron)))))
+                          h (range 0 24) 
+                          :when (valid-element? h (day-time-mapping 3)) 
+                          minutes (range 0 60) 
+                          :when (valid-element? minutes (day-time-mapping 4)) 
+                          s (range 0 60) 
+                          :when (and  (valid-element? s (day-time-mapping 5)) (t/after? (to-local-date-time (t/date-time y m d h minutes s)) timestamp))]
                       (list y m d h minutes s))
         found-date (first found-dates)]
     (when found-date (to-local-date-time (apply t/date-time found-date)))))
 
-(defn next-interval-timestamp [timestamp mapping]
-  (when (some :interval mapping)
-    (let [d (map #(if (:interval %) (:interval %) 0) mapping)
-          delta (interleave [t/secs t/minutes t/hours t/days t/months t/weeks t/years] d)]
-      (reduce t/plus timestamp (map eval (partition 2 delta))))))
 
-(defn test-string "12 12 13 * * 7 2013")
+
+
+(defn current-cron-time? []
+  "Returns current local time in CRON format"
+  (let [t (local-now)]
+    [(joda->cron t) t]))
 
 (defn- test-find-valid-day? [s]
-  (let [[c t] (current-cron-time?)
-        mapping (parse-cron-string s)]
-    (println "Next interval timestamp: " (time (next-interval-timestamp t mapping)))
-    (println "Next CRON timestamp: " (time (next-cron-timestamp t mapping)))
-    (or (next-interval-timestamp t mapping) (next-cron-timestamp t mapping))))
+  (let [[c t] (current-cron-time?)]
+    (next-timestamp t s)))
 
 (defn print-cron [cron-string]
   (let [elements (map clojure.string/trim (clojure.string/split cron-string #" "))
