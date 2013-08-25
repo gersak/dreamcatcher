@@ -1,16 +1,16 @@
 (ns dreamcatcher.core
   (:use [dreamcatcher.util :only (get-state-mapping get-transitions get-validators has-transition? get-transition) :reload true])
-  (:require-macros
-            [dreamcatcher.macros :as m]))
+  (                      :require-macros [dreamcatcher.macros :as m]))
 
 
 
-;; State Machine is a simple map that contains 
-;; transitons from one state to another.
+;; State Machine is a simple map...
+;; That contains transitons from one state to another.
 ;; It can also contain validators that evaluate if 
 ;; transition is valid to happen or not.
 
 ;; StateMachine generation
+
 (defn add-state [stm state] 
   (assert (not (or (= :data state) (= :state state) (= :stm state))) "[:state :data :stm] are special keys")
   (swap! stm #(merge % (hash-map state nil))))
@@ -41,7 +41,23 @@
      (doseq [x v] (apply add-validator (conj x stm)))
      @stm)))
 
-
+                 
+                                                     
+                              
+                                       
+                    
+                                                      
+                                                                    
+    
+              
+                                    
+                                    
+                                     
+                                   
+                       
+          
+           
+                     
 
 ;; Machine instance is map that represents
 ;; "real-machine" that has real state and real data
@@ -51,7 +67,6 @@
 
 (declare get-data)
 
-
 (defn nilfn [x] x)
 
 (defn get-stm [instance]
@@ -59,19 +74,18 @@
 
 (defn valid-transition? 
   "Computes if transition from-state to to-state is valid.
-  If there is any type of validator function will try to
-  evaluate if transition is valid based on current data.
-  
-  If there is no validator than transition is valid.
-  
-  If validator is not a function, transition is valid."
+  If there is any type of validator function than function
+  result decides if transition is valid. If no validator
+  is provided than transition is valid.
+
+  If validator is not a function, transition is not valid."
   [instance from-state to-state]
   (if-let [vf (get (:validators (get-state-mapping (get-stm instance) from-state)) to-state)]
-    (when (fn? vf) (vf (get-data instance)))
+    (when (fn? vf) (vf instance))
     true))
 
 (defn get-machine-instance 
-  "Return STM instance with initial state. Return value is map 
+  "Return STM instance with initial state. Return value is map
   with reference to :stm and with parameters :data and :state
   that represents current data and current state."
   ([stm initial-state] (get-machine-instance stm initial-state nil))
@@ -89,11 +103,12 @@
 
 (defn get-reachable-states 
   "Returns reachable states from positon of instance
-  wihtin state machine."
+  within state machine."
   [instance]
   (keys (get-transitions (get-stm instance) (get-state instance))))
 
 (defn reset-state! [instance new-state]
+  "Resets STM state. STM data is not changed"
   (assoc instance :state new-state))
 
 (defn get-data [instance]
@@ -118,11 +133,16 @@
   "Removes data from STM"
   (update-in instance [:data] (fn [_] (apply dissoc (get-data instance) keywords))))
 
-
-(defn concurrent? [x]
-  (boolean (some #(instance? % x) [clojure.lang.Atom clojure.lang.Ref])))
+(defn clear-data [instance]
+  "Removes all data from STM"
+  (assoc instance :data nil))
 
 ;; Higher order functions
+(defn- step [instance from-state to-state fun]
+  (when-not (nil? instance)
+    (when (valid-transition? instance from-state to-state)
+      (fun instance))))
+
 (defn move 
   "Makes attempt to move machine instance to next state. Input
   argument is machine instance and 3 functions are applied.
@@ -133,26 +153,29 @@
   2* transition fn from state -> next-state - Direct transtion between states
   3* from any state -> next-state fn - If there is general incoming function in next state
 
-  Return value is map."
+  Return value is map, that is STM instance."
   [instance to-state]
   (if-let [stm (get-stm instance)]
     (do
       (assert (contains? stm to-state) (str "STM doesn't contain " to-state " state"))
-      (if (valid-transition? instance (get-state instance) to-state)
-        (let [from-state (get-state instance)
-              tfunction (or (get-transition stm from-state to-state) identity)
-              in-fun (or 
-                       (get-transition stm :any to-state)
-                       (get-transition stm "any" to-state)
-                       identity)
-              out-fun (or 
-                        (get-transition stm from-state :any)
-                        (get-transition stm from-state "any")
-                        identity)]
-          (assert (or tfunction in-fun) (str "There is no transition function from state " from-state " to state " to-state))
-          (-> instance out-fun tfunction (assoc :state to-state) in-fun))))
+      (let [from-state (get-state instance)
+            tfunction (or (get-transition stm from-state to-state) identity)
+            in-fun (or 
+                     (get-transition stm :any to-state)
+                     (get-transition stm "any" to-state)
+                     identity)
+            out-fun (or 
+                      (get-transition stm from-state :any)
+                      (get-transition stm from-state "any")
+                      identity)]
+        (assert (or tfunction in-fun) (str "There is no transition function from state " from-state " to state " to-state))
+        (if-let [new-instance (-> instance
+                                  (step from-state :any out-fun)
+                                  (step from-state to-state tfunction)
+                                  (step :any to-state in-fun))]
+          (assoc new-instance :state to-state)
+          instance)))
     (assert false (str "There is no state machine configured for this instance: " instance))))
-
 
 
 (defn get-choices 
@@ -162,18 +185,21 @@
   First directly reachable states are calculated
   and set as first choices. If there are states in
   STM of this instance that are reachable from
-  :any state than that choices are also valid
-  and are inserted after direct transitions."
+  :any state other than choices than that states
+  are also valid and are inserted after direct 
+  transitions."
   ([x] (get-choices x (get-state x)))
   ([x state]
    (if-let [fix-choices (-> x :life state)]
      (-> (filter #(contains? 
                     (set (into (-> (get-transitions (get-stm x) :any) keys vec)
-                               (-> (get-transitions (get-stm x) state) keys vec)))
-                    %) fix-choices) vec)
+                               (-> (get-transitions (get-stm x) state) keys vec))) %) fix-choices) vec)
      (let [direct-transitions (-> (get-transitions (get-stm x) state) keys vec)
-           available? (fn [x y] (if (= -1 (.indexOf (clj->js x) (clj->js y))) false true))
-           any-transitions (-> (get-transitions (get-stm x) :any) keys vec)
+           available? (fn [x y] (not= -1 (.indexOf 
+                                                       (clj->js x) 
+                                                       (clj->js y))))
+           any-transitions (-> (get-transitions (get-stm x) :any) keys)
+           any-transitions (remove #(= state %) any-transitions)
            sum-transitions (reduce (fn [x y] (if-not (available? x y) (conj x y) x)) direct-transitions any-transitions)]
        sum-transitions))))
 
@@ -181,13 +207,13 @@
 ;; State machine life and behaviour
 (defn give-life!
   "Give STM instance life... If no choices
-  are given than instance is free to live on
+  are given, than instance is free to live on
   its own. If there are choices that restrict
   machine behaviour than that rules are applied.
 
   Choices are supposed to be map in form:
 
-  {:state1 [:state2 :state3 :state1]}
+  {:state1 [:state2 :state3 :state1 :state1]}
 
   This means that if machine is in :state1 first
   choice is :state2, second choice is :state3 etc." 
@@ -217,14 +243,77 @@
   :random"
   ([x] (act! x :clockwise))
   ([x m-character]
-   (if-let [instance x] 
+   (if-let [instance x]
      (do
        (assert (:alive? instance) "Instance is not alive! First give it life...")
        (let [available-choices (get-choices instance)]
-         (case m-character
-           :clockwise (move-to-next-choice x (available-choices (-> (.indexOf (clj->js available-choices) (clj->js (or (:last-choice instance) (:last-state instance))))
-                                                                    inc
-                                                                    (rem (count available-choices)))))
-           :random (move-to-next-choice x (available-choices (-> available-choices count rand int)))
-           :fixed (move-to-next-choice x (available-choices (or (:last-choice instance) 0))))))
+         (if (seq available-choices)
+           (case m-character
+             :clockwise (move-to-next-choice x (available-choices (-> (.indexOf 
+                                                                                                
+                                                                               (clj->js available-choices)
+                                                                        (or (:last-choice instance) (:last-state instance)))
+                                                                      inc
+                                                                      (rem (count available-choices)))))
+             :random (move-to-next-choice x (available-choices (-> available-choices count rand int)))
+             :fixed (move-to-next-choice x (available-choices (or (:last-choice instance) 0))))
+           x)))
      (assert false "This is not STM instance"))))
+
+;; Graph tranversing
+(defn get-paths-from 
+  "Calculates all reachable states from start
+  state of STM"
+  [stm start]
+  (let [stm (dissoc stm :any)
+        direct-nodes (fn [x] (map #(-> stm (get-transitions %) keys) x))
+        visited? (fn [path state] (not= -1 (.indexOf                    (clj->js path) state)))
+        generate-paths (fn [current-path]
+                         (let [c (last current-path)]
+                           (if-let [targets (seq (-> stm (get-transitions c) keys))]
+                             (map #(when-not (visited? current-path %)
+                                     (vec (conj current-path %))) targets)
+                             [current-path])))]
+    (loop [paths [[start]]]
+      (let [new-paths (reduce into [] (map generate-paths paths))]
+        (if (= new-paths paths) (->> paths 
+                                     (remove nil?) 
+                                     (remove #(= [start] %))
+                                     (sort-by count)) 
+          (recur new-paths))))))
+
+(defn from->to  
+  "Calculates all paths from start state
+  to end state"
+  [stm start end]
+  (filter #(not= -1 (.indexOf                (clj->js %) end)) (get-paths-from stm start)))
+
+(defn reach-state 
+  "Function strives to reach input state from
+  current state of STM instance. Functions that are
+  defined as transitions or indirect :any functions
+  SHOULD NOT operate on other constructs.
+
+  Reason is: While trying to reach certain
+  state with reach-state function many transitions
+  are activated and end result is first possible
+  path from current state to target state with all
+  transitions applied inbetween.
+
+  Somewhat -> macro with validators."
+  [instance state]
+  (let [stm (get-stm instance)
+        paths (from->to stm (get-state instance) state)
+        move (memoize move) ;; Do not apply transitions more than once per try
+        tranverse (fn [path]
+                    (loop [x instance
+                           c (get-state instance)
+                           path-left (rest path)]
+                      (if (= c state) x
+                        (if-not (seq path-left) nil
+                          (let [next-x (move x (first path-left))]
+                            (if (= (get-state next-x) c) nil
+                              (recur next-x (get-state next-x) (rest path-left))))))))]
+    (some tranverse paths)))
+
+;;;;;;;;;;;; This file autogenerated from srcx/dreamcatcher/core.cljx
