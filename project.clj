@@ -1,9 +1,8 @@
-(defproject org.roribib/dreamcatcher"1.0.2-SNAPSHOT"
+(defproject org.roribib/dreamcatcher "1.0.2"
   :description "Dreamcatcher is a realy small library that
                strives to simulate state machine behavior."
   :dependencies [[org.clojure/clojure "1.4.0"]
-                 [jayq "2.3.0"]
-                 [crate "0.2.4"]
+                 [com.taoensso/timbre "2.0.0"]
                  [clj-time "0.5.0"]
                  [hiccup "1.0.3"]
                  [prismatic/dommy "0.1.1"]]
