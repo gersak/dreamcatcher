@@ -18,8 +18,10 @@
              (map #(assert (contains? @stm# %) (str "There is no " % " in " stm#)) from-states#)
              (map #(assert (contains? @stm# %) (str "There is no " %" in " stm#)) to-states#)
              (doseq [x# from-states# y# to-states#]
-               (swap! stm# #(assoc % x# (assoc (get-state-mapping @stm# x#)
-                                               ~mapping (merge (~mapping (get-state-mapping @stm# x#)) (hash-map y# fun#)))))))))
+               (let [cm# (reverse (get-in @stm# [x# ~mapping])) 
+                     nm# (reduce conj (array-map) (conj cm# [y# fun#]))]
+                 (swap! stm# assoc-in [x# ~mapping] nm#))))))
+
        (defn ~remover 
          "Removes mapping function from state to
          another state in given STM." 

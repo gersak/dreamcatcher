@@ -1,15 +1,26 @@
-(defproject org.roribib/dreamcatcher "1.0.2"
+(defproject org.roribib/dreamcatcher "1.0.3"
   :description "Dreamcatcher is a realy small library that
                strives to simulate state machine behavior."
-  :dependencies [[org.clojure/clojure "1.4.0"]
-                 [com.taoensso/timbre "2.0.0"]
+  :dependencies [[org.clojure/clojure "1.6.0"]
+                 [com.taoensso/timbre "3.2.0"]
                  [clj-time "0.5.0"]
                  [hiccup "1.0.3"]
                  [prismatic/dommy "0.1.1"]]
   :plugins [[lein-cljsbuild "0.3.0"]
-            [lein-clojars "0.9.1"]]
-  :source-paths ["src" "src-cljs"]
-  :profiles {:dev {:source-paths ["dev-src/clj"]}}
+            [lein-clojars "0.9.1"]
+            [com.keminglabs/cljx "0.4.0"]]
+  :source-paths ["src"]
+  :test-paths ["test"]
+  :profiles {:dev {:source-paths ["dev-src/clj"
+                                  "test"]
+                   :dependencies [[midje "1.6.3"]
+                                  [org.clojure/tools.nrepl "0.2.3"]]}}
+  :cljx {:builds [{:source-paths ["srcx"]
+                   :output-path "src/"
+                   :rules :clj}
+                  {:source-paths ["srcx"]
+                   :output-path "src-cljs/"
+                   :rules :cljs}]}
   :cljsbuild {:builds {:dev {:source-paths ["src-cljs/dreamcatcher"]
                              :jar true
                              :compiler {:output-to "js/dreamcatcher.js"

@@ -1,7 +1,11 @@
 (ns dreamcatcher.util)
 
-(defn get-states [stm]
-  (-> stm keys))
+(defn get-states 
+  "Function returns valid states of STM.
+  Returned states do not include :any state
+  since it is not deterministic."
+  [stm]
+  (-> stm keys set (disj :any)))
 
 (defn get-state-mapping [stm state]
   (when stm

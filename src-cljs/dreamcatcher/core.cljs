@@ -1,6 +1,8 @@
 (ns dreamcatcher.core
   (:use [dreamcatcher.util :only (get-state-mapping get-transitions get-validators has-transition? get-transition) :reload true])
-  (                      :require-macros [dreamcatcher.macros :as m]))
+  (                      :require-macros 
+         [dreamcatcher.macros :as m]
+                                  ))
 
 
 
@@ -13,11 +15,10 @@
 
 (defn add-state [stm state] 
   (assert (not (or (= :data state) (= :state state) (= :stm state))) "[:state :data :stm] are special keys")
-  (swap! stm #(merge % (hash-map state nil))))
+  (swap! stm assoc state nil))
 
 (defn remove-state [stm state]
   (swap! stm #(dissoc % state)))
-
 
 (m/add-statemachine-mapping validator :validators)
 (m/add-statemachine-mapping transition :transitions)
@@ -59,6 +60,18 @@
            
                      
 
+                   
+                                         
+                  
+  
+                       
+  
+                                             
+                         
+                   
+                  
+                  
+
 ;; Machine instance is map that represents
 ;; "real-machine" that has real state and real data
 ;; and has transitions defined in stm input argument
@@ -66,8 +79,6 @@
 ;; (atom {:state nil :data nil :stm nil})
 
 (declare get-data)
-
-(defn nilfn [x] x)
 
 (defn get-stm [instance]
   (:stm instance))
@@ -81,8 +92,14 @@
   If validator is not a function, transition is not valid."
   [instance from-state to-state]
   (if-let [vf (get (:validators (get-state-mapping (get-stm instance) from-state)) to-state)]
-    (when (fn? vf) (vf instance))
-    true))
+    (when (fn? vf) 
+                                                                     
+      (vf instance))
+    (do
+                                                           
+     true)))
+
+(defn invalid [_] false)
 
 (defn get-machine-instance 
   "Return STM instance with initial state. Return value is map
@@ -199,7 +216,8 @@
                                                        (clj->js x) 
                                                        (clj->js y))))
            any-transitions (-> (get-transitions (get-stm x) :any) keys)
-           any-transitions (remove #(= state %) any-transitions)
+           ; Experimenting
+           ;any-transitions (remove #(= state %) any-transitions)
            sum-transitions (reduce (fn [x y] (if-not (available? x y) (conj x y) x)) direct-transitions any-transitions)]
        sum-transitions))))
 
@@ -220,13 +238,15 @@
   ([x] (give-life! x nil))
   ([x choices] (assoc x :alive? true :life choices :last-choice nil :last-state nil)))
 
+
 (defn kill! [x]
   (assoc x :alive false))
+
 
 (defn ^:private move-to-next-choice [x next-choice]
   (let [state (get-state x)
         x (move x next-choice)]
-    (if (= (get-state x) next-choice)
+    (if (and (= (get-state x) next-choice) (not= state next-choice))
       (assoc x :last-state state :last-choice nil)
       (assoc x :last-choice next-choice))))
 
@@ -248,17 +268,20 @@
        (assert (:alive? instance) "Instance is not alive! First give it life...")
        (let [available-choices (get-choices instance)]
          (if (seq available-choices)
-           (case m-character
-             :clockwise (move-to-next-choice x (available-choices (-> (.indexOf 
-                                                                                                
-                                                                               (clj->js available-choices)
-                                                                        (or (:last-choice instance) (:last-state instance)))
-                                                                      inc
-                                                                      (rem (count available-choices)))))
-             :random (move-to-next-choice x (available-choices (-> available-choices count rand int)))
-             :fixed (move-to-next-choice x (available-choices (or (:last-choice instance) 0))))
-           x)))
+           (let [choice (case m-character
+                          :clockwise (available-choices 
+                                       (-> (.indexOf 
+                                                                     
+                                                    (clj->js available-choices)
+                                             (or (:last-choice instance) (:last-state instance)))
+                                           inc
+                                           (rem (count available-choices))))
+                          :random (available-choices (-> available-choices count rand int))
+                          :fixed (available-choices (or (:last-choice instance) 0)))] 
+                                                                                     
+             (move-to-next-choice x choice)))))
      (assert false "This is not STM instance"))))
+
 
 ;; Graph tranversing
 (defn get-paths-from 
@@ -301,19 +324,28 @@
   transitions applied inbetween.
 
   Somewhat -> macro with validators."
-  [instance state]
-  (let [stm (get-stm instance)
-        paths (from->to stm (get-state instance) state)
-        move (memoize move) ;; Do not apply transitions more than once per try
-        tranverse (fn [path]
-                    (loop [x instance
-                           c (get-state instance)
-                           path-left (rest path)]
-                      (if (= c state) x
-                        (if-not (seq path-left) nil
-                          (let [next-x (move x (first path-left))]
-                            (if (= (get-state next-x) c) nil
-                              (recur next-x (get-state next-x) (rest path-left))))))))]
-    (some tranverse paths)))
+  ([instance state & {:keys [recuring?] :or {recuring? false}}]
+   (if-not recuring?
+     (let [stm (get-stm instance)
+           paths (from->to stm (get-state instance) state)
+           _ (println paths)
+           move (memoize move) ;; Do not apply transitions more than once per try
+           tranverse (fn [path]
+                       (loop [x instance
+                              c (get-state instance)
+                              path-left (rest path)]
+                         (if (= c state) x
+                           (if-not (seq path-left) nil
+                             (let [next-x (move x (first path-left))]
+                               (if (= (get-state next-x) c) nil
+                                 (recur next-x (get-state next-x) (rest path-left))))))))]
+       (some tranverse paths))
+     ;(let [i (atom instance)]
+     ;  (while (not= (get-state @i) state)
+     ;    (swap! i act!))))))
+     (loop [i instance]
+       (if (= state (get-state i))
+         i
+         (recur (act! i)))))))
 
 ;;;;;;;;;;;; This file autogenerated from srcx/dreamcatcher/core.cljx
