@@ -1,4 +1,4 @@
-(defproject org.roribib/dreamcatcher "1.0.3"
+(defproject kovacnica/dreamcatcher "1.0.3"
   :description "Dreamcatcher is a realy small library that
                strives to simulate state machine behavior."
   :dependencies [[org.clojure/clojure "1.6.0"]

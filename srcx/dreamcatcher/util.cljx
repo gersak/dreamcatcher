@@ -26,3 +26,4 @@
 
 (defn get-validators [stm state]
   (:validators (get-state-mapping stm state)))
+

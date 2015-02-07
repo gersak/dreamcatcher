@@ -50,16 +50,6 @@
     `(def ~stm-name (make-state-machine ~transitions))
     `(def ~stm-name (make-state-machine ~transitions ~validators))))
     
-(defmacro safe
-  "Simple wrapping macro for easier 
-  defjob definition. Wraps body in a
-  function THAT returns same argument
-  that was argument. Body parts are
-  evaluated thorougly."
-  [& body]
-  `(fn [x#]
-     (do ~@body) x#))
-
 (defmacro with-stm 
   "Macro defines function of one argument
   with given name.
@@ -207,10 +197,14 @@
   transitions."
   ([x] (get-choices x (get-state x)))
   ([x state]
-   (if-let [fix-choices (-> x :life state)]
-     (-> (filter #(contains? 
-                    (set (into (-> (get-transitions (get-stm x) :any) keys vec)
-                               (-> (get-transitions (get-stm x) state) keys vec))) %) fix-choices) vec)
+   (if-let [fix-choices (get (x :life) state)]
+     (let [current->any (-> x get-stm (get-transitions :any) keys)
+           current->direct (-> x get-stm (get-transitions state) keys)
+           all-states (set (concat current->direct current->any))]
+       (vec (filter all-states fix-choices)))
+     ;(-> (filter #(contains? 
+     ;               (set (into (->  keys vec)
+     ;                          (-> (get-transitions (get-stm x) state) keys vec))) %) fix-choices) vec)
      (let [direct-transitions (-> (get-transitions (get-stm x) state) keys vec)
            available? (fn [x y] (not= -1 (.indexOf 
                                         #+clj x #+cljs (clj->js x) 
@@ -221,6 +215,17 @@
            sum-transitions (reduce (fn [x y] (if-not (available? x y) (conj x y) x)) direct-transitions any-transitions)]
        sum-transitions))))
 
+(defn get-valid-candidates
+  "Returns candidate states that are valid to exit from
+  current state and transit to next-state. It is not
+  a guarante that it will succeed since transition can
+  change state of instance so it will not pass :any to
+  :next-state validation."
+  ([x] (get-valid-candidates x (get-state x)))
+  ([x state]
+   (when-let [choices (seq (get-choices x state))]
+     (when (valid-transition? x state :any)
+     (seq (filter (partial valid-transition? x state) choices))))))
 
 ;; State machine life and behaviour
 (defn give-life!
@@ -328,7 +333,6 @@
    (if-not recuring?
      (let [stm (get-stm instance)
            paths (from->to stm (get-state instance) state)
-           _ (println paths)
            move (memoize move) ;; Do not apply transitions more than once per try
            tranverse (fn [path]
                        (loop [x instance
@@ -340,9 +344,6 @@
                                (if (= (get-state next-x) c) nil
                                  (recur next-x (get-state next-x) (rest path-left))))))))]
        (some tranverse paths))
-     ;(let [i (atom instance)]
-     ;  (while (not= (get-state @i) state)
-     ;    (swap! i act!))))))
      (loop [i instance]
        (if (= state (get-state i))
          i
