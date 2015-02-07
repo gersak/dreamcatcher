@@ -1,14 +1,9 @@
 (defproject kovacnica/dreamcatcher "1.0.3"
   :description "Dreamcatcher is a realy small library that
-               strives to simulate state machine behavior."
+                strives to simulate state machine behavior."
   :dependencies [[org.clojure/clojure "1.6.0"]
-                 [com.taoensso/timbre "3.2.0"]
-                 [clj-time "0.5.0"]
-                 [hiccup "1.0.3"]
-                 [prismatic/dommy "0.1.1"]]
-  :plugins [[lein-cljsbuild "0.3.0"]
-            [lein-clojars "0.9.1"]
-            [com.keminglabs/cljx "0.4.0"]]
+                 [com.taoensso/timbre "3.2.0"]]
+  :plugins [[lein-clojars "0.9.1"]]
   :source-paths ["src"]
   :test-paths ["test"]
   :profiles {:dev {:source-paths ["dev-src/clj"
