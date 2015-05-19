@@ -1,14 +1,14 @@
-(ns dreamcatcher.macros
-  (:use dreamcatcher.util))
+(ns dreamcatcher.macros)
 
+#+clj
 (defmacro add-statemachine-mapping [fun-name mapping]
   "Creates two funcitons with prefixes add- and remove-
   attached to \"fun-name\""
   (let [adder (symbol (str "add-" fun-name))
         remover (symbol (str "remove-" fun-name))]
     `(do
-       (defn ~adder 
-         "Function accepts stm as clojure.lang.Atom and 
+       (defn ~adder
+         "Function accepts stm as clojure.lang.Atom and
          adds mapping to that stm from state to another
          state with input function"
          [stm# from-state# to-state# fun#]
@@ -18,13 +18,13 @@
              (map #(assert (contains? @stm# %) (str "There is no " % " in " stm#)) from-states#)
              (map #(assert (contains? @stm# %) (str "There is no " %" in " stm#)) to-states#)
              (doseq [x# from-states# y# to-states#]
-               (let [cm# (reverse (get-in @stm# [x# ~mapping])) 
+               (let [cm# (reverse (get-in @stm# [x# ~mapping]))
                      nm# (reduce conj (array-map) (conj cm# [y# fun#]))]
                  (swap! stm# assoc-in [x# ~mapping] nm#))))))
 
-       (defn ~remover 
+       (defn ~remover
          "Removes mapping function from state to
-         another state in given STM." 
+         another state in given STM."
          [stm# from-state# to-state#]
          (assert (and (contains? @stm# from-state#) (contains? @stm# to-state#)) "STM doesn't contain all states")
          (let [change-data# (dissoc (-> @stm# from-state# ~mapping) to-state#)
