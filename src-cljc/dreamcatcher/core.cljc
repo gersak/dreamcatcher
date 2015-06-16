@@ -1,7 +1,8 @@
 (ns dreamcatcher.core
   (:require [dreamcatcher.util :refer (get-state-mapping get-transitions get-validators has-transition? get-transition)])
   #?(:clj (:require [dreamcatcher.macros :as m])
-     :cljs (:require-macros [dreamcatcher.macros :as m])))
+     :cljs (:require-macros [dreamcatcher.macros :as m]
+                            [dreamcatcher.core :refer (defstm)])))
 
 (defprotocol STM
   (state? [this] "Returns current state of instance")
@@ -39,24 +40,19 @@
 
   {:state1 [:state2 :state3 :state1 :state1]}
 
-  This means that if machine is in ::state1 first
-  choice is ::state2, second choice is :state3 etc.")
+  This means that if machine is in :state1 first
+  choice is :state2, second choice is :state3 etc.")
   (alive? [this])
   (kill! [this])
-  (act! [this] [this movement-strategy]
+  (act! [this]
    "Moves state machine to next state. If transition
   priority is defined with give-life! function than
   that rules are applied. Otherwise state machine
-  acts free of will...
-
-  Free will can be
-  :clockwise
-  :fixed
-  :random"))
+  acts free of will..."))
 
 
 (defprotocol STMPath
-  (to-> [this target]
+  (to-> [this target] [this target direct]
   "Calculates all paths from current state
   to end state")
   (reach-state [this target] [this target options]
@@ -194,8 +190,16 @@
 (defn- get-reachable-states
   "Returns reachable states from positon of instance
   within state machine."
-  [^STMInstance instance]
-  (keys (get-transitions (stm? instance) (state? instance))))
+  ([^STMInstance instance]
+   (get-reachable-states instance (state? instance)))
+  ([^STMInstance instance state]
+   (->
+     (->> (keys (get-transitions (stm? instance) state))
+          vec
+          (remove (partial = "any"))
+          (remove (partial = :any)))
+     (concat (keys (get-transitions (stm? instance) :any)))
+     (concat (keys (get-transitions (stm? instance) "any"))))))
 
 (defn reset-state! [^STMInstance instance new-state]
   "Resets STM state. STM data is not changed"
@@ -258,22 +262,11 @@
   :any state other than choices than that states
   are also valid and are inserted after direct
   transitions."
-  ([^STMInstance x] (get-choices x (:state x)))
+  ([^STMInstance x] (get-choices x (state? x)))
   ([^STMInstance x state]
-   (if-let [fix-choices (get (-> x :options ::life) state)]
-     (let [current->any (-> x stm? (get-transitions :any) keys)
-           current->direct (-> x stm? (get-transitions state) keys)
-           all-states (set (concat current->direct current->any))]
-       (vec (filter all-states fix-choices)))
-     (let [direct-transitions (-> x stm? (get-transitions state) keys vec)
-           available? (fn [x y] (not= -1 (.indexOf
-                                           #?(:clj x :cljs (clj->js x))
-                                           #?(:clj y :cljs (clj->js y)))))
-           any-transitions (-> x stm? (get-transitions :any) keys)
-           ; Experimenting
-           ;any-transitions (remove #(= state %) any-transitions)
-           sum-transitions (reduce (fn [x y] (if-not (available? x y) (conj x y) x)) direct-transitions any-transitions)]
-       sum-transitions))))
+   (if-let [fix-choices (-> x :options ::life (get state))]
+     fix-choices
+     (-> x stm? (get-transitions state) keys vec))))
 
 (defn- get-valid-candidates
   "Returns candidate states that are valid to exit from
@@ -289,14 +282,18 @@
 
 ;; State machine life and behaviour
 
-(defn ^:private move-to-next-choice [x next-choice]
-  (let [old-state (state? x)
-        x (move-stm x next-choice)]
-    (if (and (= (state? x) next-choice) (not= old-state next-choice))
-      (-> x
-          (assoc-in [:options ::last-state] old-state)
-          (assoc-in [:options ::last-choice] nil))
-      (assoc-in x [:options ::last-choice] next-choice))))
+(defn ^:private move-to-next-choice [^STMInstance x]
+  (let [choices (-> x :options ::life (get (state? x)))
+        next-choice (first choices)]
+    (if next-choice
+      (let [new-state (move-stm x next-choice)
+            changed-state (update-in new-state
+                                     [:options ::life (state? new-state)]
+                                     #(cond
+                                        (vector? %) (vec (rest %))
+                                        :else (concat (rest %) (take 1 %))))]
+        changed-state)
+      x)))
 
 
 
@@ -305,30 +302,67 @@
   "Calculates all reachable states from start
   state of STM"
   [stm start]
-  (let [stm (dissoc stm :any)
-        direct-nodes (fn [x] (map #(-> stm (get-transitions %) keys) x))
-        visited? (fn [path state] (not= -1 (.indexOf #?(:clj path :cljs (clj->js path)) state)))
+  (let [;stm (dissoc stm :any)
+        visited? (fn [path state]
+                   (not= -1 (.indexOf #?(:clj path :cljs (clj->js path)) state)))
         generate-paths (fn [current-path]
+                         ;(println "Current path " current-path)
                          (let [c (last current-path)]
-                           (if-let [targets (seq (-> stm (get-transitions c) keys))]
-                             (map #(when-not (visited? current-path %)
-                                     (vec (conj current-path %))) targets)
+                           (if-let [targets (seq
+                                              (concat
+                                                (-> stm (get-transitions c) keys)
+                                                (keys (or
+                                                        (get-transitions stm :any)
+                                                        (get-transitions stm "any")))))]
+                             (let [expanded-paths (seq (map #(if-not (visited? current-path %)
+                                                               (vec (conj current-path %))
+                                                               current-path) targets))]
+                               #_(println "Expanded paths: " expanded-paths)
+                               (remove nil? expanded-paths))
                              [current-path])))]
     (loop [paths [[start]]]
-      (let [new-paths (reduce into [] (map generate-paths paths))]
+      (let [new-paths (reduce into #{} (map generate-paths paths))]
+        #_(println "Calculated paths: " new-paths)
         (if (= new-paths paths) (->> paths
                                      (remove nil?)
                                      (remove #(= [start] %))
                                      (sort-by count))
           (recur new-paths))))))
 
-(defn- from-to->
-  [stm start end]
+(defn- from->to
+  [stm start end direct?]
   (assert (contains? stm end) (str "STM doesn't contain state " end))
   (if (= start end)
     nil
-    (let [paths (filter #(not= -1 (.indexOf #?(:clj % :cljs (clj->js %)) end)) (get-paths-from stm start))]
-      (map (comp #(conj (vec (rest %)) end) (partial take-while (partial not= end))) paths))))
+    (let [stm (if direct? (dissoc stm :any) stm)
+          visited? (fn [path state]
+                     (not= -1 (.indexOf #?(:clj path :cljs (clj->js path)) state)))
+          generate-paths (fn [current-path]
+                           ;(println "Current path " current-path)
+                           (let [c (last current-path)]
+                             #_(println "Is c=end? " (= c end))
+                             (if-not (= c end)
+                               (if-let [targets (seq
+                                                  (concat
+                                                    (-> stm (get-transitions (or c start)) keys)
+                                                    (keys (or
+                                                            (get-transitions stm :any)
+                                                            (get-transitions stm "any")))))]
+                                 (let [expanded-paths (seq (map #(if-not (visited? current-path %)
+                                                                   (vec (conj current-path %))
+                                                                   current-path) targets))]
+                                   expanded-paths)
+                                 [current-path])
+                               [current-path])))]
+      (loop [paths [[]]]
+        (let [new-paths (reduce into #{} (map generate-paths paths))]
+          #_(println "Calculated paths: " new-paths)
+          (if (= new-paths paths) (->> paths
+                                       (remove #(= -1 (.indexOf % #?(:clj end :cljs (clj->js end))) ))
+                                       (sort-by count))
+            (recur new-paths)))))))
+
+
 
 (extend-type STMInstance
   STMMovement
@@ -337,68 +371,94 @@
   (move [this next-state] (move-stm this next-state))
   STMLife
   (give-life!
-    ([this choices] (-> this
-                        (assoc-in [:options ::alive?] true)
-                        (assoc-in [:options ::life] choices)
-                        (assoc-in [:options ::last-choice] nil)
-                        (assoc-in [:options ::last-state] nil)))
+    ([this choices] (let [proposed-life (reduce conj (array-map)
+                                                (for [x (keys (stm? this))]
+                                                  [x (get-reachable-states this x)]))]
+                      (-> this
+                          (assoc-in [:options ::alive?] true)
+                          (assoc-in [:options ::life] proposed-life)
+                          (update-in [:options ::life] merge choices))))
     ([this] (give-life! this nil)))
-  (alive? [this] (get-in this [:options ::alive]))
-  (kill! [this] (update-in this [:options ::alive] false))
+  (alive? [this] (get-in this [:options ::alive?]))
+  (kill! [this] (update-in this [:options ::alive?] false))
   (act!
-    ([x m-character]
-     (if-let [instance x]
-       (do
-         (assert ((comp ::alive? :options) instance) "Instance is not alive! First give it life...")
-         (let [available-choices (get-choices instance)]
-           (if (seq available-choices)
-             (let [choice (case m-character
-                            :clockwise (available-choices
-                                         (-> (.indexOf #?(:clj available-choices :cljs (clj->js available-choices))
-                                                       (or ((comp #?(:cljs clj->js) ::last-choice :options) instance) ((comp #?(:cljs clj->js) ::last-state :options) instance)))
-                                             inc
-                                             (rem (count available-choices))))
-                            :random (available-choices (-> available-choices count rand int))
-                            :fixed (available-choices (or ((comp ::last-choice :options) instance) 0)))]
-               (move-to-next-choice x choice)))))
-       (assert false "This is not STM instance")))
-    ([this] (act! this :clockwise)))
+    ([this] (do
+              (assert ((comp ::alive? :options) this) "Instance is not alive! First give it life...")
+              (move-to-next-choice this))))
   STMPath
-  (to-> [this target]
-    (from-to-> (stm? this) (state? this) target))
+  (to->
+    ([this target] (to-> this target true))
+    ([this target direct?]
+     (from->to (stm? this) (state? this) target direct?)))
   (reach-state
-    ([instance state] (reach-state instance state {:recuring? false}))
-    ([instance state {:keys [recuring?] :as options}]
-     (if-not recuring?
-       (let [stm (stm? instance)
-             paths (from-to-> stm (state? instance) state)
-             move (memoize move) ;; Do not apply transitions more than once per try
-             tranverse (fn [path]
-                         (loop [x instance
-                                c (state? instance)
-                                path-left path]
-                           (if (= c state) x
-                             (if-not (seq path-left) nil
-                               (let [next-x (move x (first path-left))]
-                                 (if (= (state? next-x) c) nil
-                                   (recur next-x (state? next-x) (rest path-left))))))))]
-         (some tranverse paths))
-       (loop [i instance]
-         (if (= state (state? i))
-           i
-           (recur (act! i))))))))
+    ([instance state] (reach-state instance state nil))
+    ([instance state {:keys [traverse] :or {traverse :only-direct} :as options}]
+     (case traverse
+       :only-direct (let [stm (stm? instance)
+                          paths (to-> instance state true)
+                          move (memoize move) ;; Do not apply transitions more than once per try
+                          tranverse (fn [path]
+                                      (loop [x instance
+                                             c (state? instance)
+                                             path-left path]
+                                        (if (= c state) x
+                                          (if-not (seq path-left) nil
+                                            (let [next-x (move x (first path-left))]
+                                              (if (= (state? next-x) c) nil
+                                                (recur next-x (state? next-x) (rest path-left))))))))]
+                      (some tranverse paths))
+       :any (let [stm (stm? instance)
+                  paths (to-> instance state false)
+                  move (memoize move) ;; Do not apply transitions more than once per try
+                  tranverse (fn [path]
+                              (loop [x instance
+                                     c (state? instance)
+                                     path-left path]
+                                (if (= c state) x
+                                  (if-not (seq path-left) nil
+                                    (let [next-x (move x (first path-left))]
+                                      (if (= (state? next-x) c) nil
+                                        (recur next-x (state? next-x) (rest path-left))))))))]
+              (some tranverse paths))
+       :recuring (loop [i instance]
+                   (if (= state (state? i))
+                     i
+                     (recur (act! i))))
+       nil))))
+
+
+#?(:clj
+    (defmacro multimove [instance & states]
+      (let [movements# (map #(list 'move %) states)]
+        `(-> ~instance ~@movements#))))
 
 
 (letfn
   [(path-history [x]
-     (println "Traversed  paths: " (data? x))
-     (-> x (update :data conj (state? x))))]
+     (println "Traversed  paths: " (conj (-> x data? :history) (state? x)))
+     (-> x (update-in [:data :history] conj (state? x))))]
   (defstm simple-stm
     ;; Transitions
-    [1 2 path-history
-     2 3 path-history
-     1 3 path-history
-     3 4 path-history
-     :any 5 path-history]
+    [1 2 identity
+     2 3 (safe (println "From 2->3"))
+     1 3 identity
+     3 [4 5] identity
+     4 [5 3 2] identity
+     5 6  #(some identity
+                 ((juxt
+                    (with-stm x
+                      (-> x
+                          (assoc-in [:data :turbo] 1))
+                      nil)
+                    (with-stm x
+                      (-> x
+                          (assoc-in [:data :turbo] 100)))) %))
+     :any 1 path-history
+     [1 2 3 4 5 6] :any path-history]
     ;; Validators
     [1 3 (fn [x] false)]))
+
+
+(def simple-life
+  {1 [3 3 3 2]
+   4 [5]})

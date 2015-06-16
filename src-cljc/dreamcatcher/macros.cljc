@@ -28,5 +28,5 @@
              [stm# from-state# to-state#]
              (assert (and (contains? @stm# from-state#) (contains? @stm# to-state#)) "STM doesn't contain all states")
              (let [change-data# (dissoc (-> @stm# from-state# ~mapping) to-state#)
-                   update# (assoc @stm# from-state# (merge (-> @stm# from-state#) (hash-map ~mapping change-data#)))]
+                   update# (assoc @stm# from-state# (merge (-> @stm# from-state#) (array-map ~mapping change-data#)))]
                (reset! stm# update#)))))))

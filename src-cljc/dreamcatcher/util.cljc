@@ -13,7 +13,7 @@
 
 (defn get-transitions [stm state]
   (when stm
-    (get (get-state-mapping stm state) :dreamcatcher.core/transitions )))
+    (get (get-state-mapping stm state) :dreamcatcher.core/transitions)))
 
 (defn has-transition? [stm from-state to-state]
   (fn? (-> stm
