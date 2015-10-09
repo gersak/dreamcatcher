@@ -1,15 +1,12 @@
 (defproject kovacnica/dreamcatcher "1.0.4"
   :description "Dreamcatcher is a realy small library that
                strives to simulate state machine behavior."
-  :dependencies [[org.clojure/clojure "1.7.0-RC1"]
+  :dependencies [[org.clojure/clojure "1.7.0"]
                  [org.clojure/core.async "0.1.346.0-17112a-alpha"]
                  [org.clojure/clojurescript "0.0-3308"]]
   ;:aot :all
-  ;:source-paths ["srcx" "src" "src-cljs"]
   :source-paths ["src-cljc" "test"]
-  ;:plugins [[lein-figwheel "0.3.3"]]
   :test-paths ["test/dreamcatcher"]
-  :test-selectors {:default (complement :integration)}
   :profiles {:dev {:dependencies [[reagent "0.5.0"]
                                   [midje "1.6.3"]
                                   [ring "1.4.0-RC1"]
@@ -17,13 +14,7 @@
                                   [http-kit "2.1.18"]
                                   [prismatic/dommy "1.1.0"]
                                   [hiccup "1.0.5"]]
-                   :source-paths ["dev-src/cljs"]}}
-  :cljx {:builds [{:source-paths ["srcx"]
-                   :output-path "src/"
-                   :rules :clj}
-                  {:source-paths ["srcx"]
-                   :output-path "src-cljs/"
-                   :rules :cljs}]}
+                   :source-paths ["dev-src/cljc"]}}
   :clean-targets ^{:private false} [:target-path "out" "resource/public/js"]
   :figwheel {:http-server-root  "js"
              :server-port 1337
