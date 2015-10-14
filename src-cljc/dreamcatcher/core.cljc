@@ -1,11 +1,8 @@
 (ns dreamcatcher.core
-  #?(:clj
-      (:require [dreamcatcher.macros :as m]
-                [dreamcatcher.util :refer (get-state-mapping get-transitions get-validators has-transition? get-transition get-states)])
-     :cljs
-      (:require-macros [dreamcatcher.macros :as m]
-                       [dreamcatcher.util :refer (get-state-mapping get-transitions get-validators has-transition? get-transition get-states)]
-                       [dreamcatcher.core :refer (defstm)])))
+  (:require #?(:clj [dreamcatcher.macros :as m])
+            [dreamcatcher.util :refer (get-state-mapping get-transitions get-validators has-transition? get-transition get-states)])
+  #?(:cljs
+      (:require-macros [dreamcatcher.macros :as m])))
 
 (defprotocol STM
   (state? [this] "Returns current state of instance")
@@ -363,5 +360,3 @@
     (defmacro multimove [instance & states]
       (let [movements# (map #(list 'move %) states)]
         `(-> ~instance ~@movements#))))
-
-

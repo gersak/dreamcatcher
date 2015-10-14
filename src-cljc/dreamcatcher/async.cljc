@@ -1,29 +1,35 @@
 (ns dreamcatcher.async
-  (:require [dreamcatcher.macros :as m]
-            [dreamcatcher.util :refer [get-states get-transitions]]
-            ;; Only testing
-            #?(:clj [dreamcatcher.core :refer [defstm]])
-            [dreamcatcher.core :refer [defstm safe move state-changed? make-machine-instance data? state? make-machine-instance]]
-            [clojure.core.async :as async :refer [mult mix chan tap admix close! put! take!]]))
+  #?(:cljs (:require-macros [dreamcatcher.core :refer [defstm with-stm safe]]))
+  #?(:clj
+      (:require [dreamcatcher.util :refer [get-states get-transitions]]
+                ;; Only testing
+                [dreamcatcher.core :refer [safe defstm with-stm move state-changed? make-machine-instance data? state? make-machine-instance]]
+                [clojure.core.async :as async :refer [mult mix chan tap admix close! put! take!]])
+     :cljs
+     (:require [dreamcatcher.util :refer [get-states get-transitions]]
+               ;; Only testing
+               [dreamcatcher.core :refer [move state-changed? make-machine-instance data? state? make-machine-instance]]
+               [cljs.core.async :as async :refer [mult mix chan tap admix close! put! take!]])))
 
 
 (defprotocol AsyncSTMData
-  (in-mix? [this]
+  (in-mix [this]
            "Function returns map with states as keys, and mix objects as vals. All states
   are mix/mult so it is possible to tap and admix any one of state channels.")
-  (out-mult? [this] "Function returns map with states as keys, and mult objects as vals. All states
+  (out-mult [this] "Function returns map with states as keys, and mult objects as vals. All states
   are mix/mult so it is possible to tap and admix any one of state channels.")
-  (state-channels? [this] "Function returns map with {state state-channel} mapping.")
-  (transition-channels? [this] "Function returns transitions mapping. First level are source states,
+  (state-channels [this] "Function returns map with {state state-channel} mapping.")
+  (transition-channels [this] "Function returns transitions mapping. First level are source states,
   afterward is destination state and transition-channel that is transduced
   with STM transition."))
 
 (defprotocol AsyncSTMIO
   (inject [this state data] "Injects data to state channel.")
-  (suck [this state]
-        [this state buffer-size]
-        [this state buffer-size xf]
-        [this state buffer-size xf exh]))
+  (suck
+    [this state]
+    [this state buffer-size]
+    [this state buffer-size xf]
+    [this state buffer-size xf exh] "Creates a channel that taps into state channel with input params."))
 
 (defprotocol AsyncSTMControl
   (disable [this] "Function closes all state channels, hence all transition channels are closed."))
@@ -57,7 +63,6 @@
                          (when-not (or (#{:any} s) (#{:any} (key transition)))
                            (let [target-state (key transition)
                                  transition-channel (val transition)]
-                             ;(println "Making connection: " s " -> " target-state)
                              ;; Tap transition to source-state
                              (when transition-channel
                                (tap (get mult-states s) transition-channel))
@@ -70,55 +75,56 @@
     ;transition-channels
     (reify
       AsyncSTMData
-      (in-mix? [_] mix-states)
-      (out-mult? [_] mult-states)
-      (state-channels? [_] channeled-states)
-      (transition-channels? [_] transition-channels)
+      (in-mix [_] mix-states)
+      (out-mult [_] mult-states)
+      (state-channels [_] channeled-states)
+      (transition-channels [_] transition-channels)
       AsyncSTMIO
       (inject [this state data]
-        (async/put! (get (state-channels? this) state) (make-machine-instance stm state data)))
+        (async/put! (get (state-channels this) state) (make-machine-instance stm state data)))
       (suck [this state] (suck this state 1))
       (suck [this state buffer-size]
         (let [x (chan buffer-size)]
-          (tap (get (out-mult? this) state) x)
+          (tap (get (out-mult this) state) x)
           x))
       (suck [this state buffer-size xf]
         (let [x (chan buffer-size xf)]
-          (tap (get (out-mult? this) state) x)
+          (tap (get (out-mult this) state) x)
           x))
       (suck [this state buffer-size xf ex]
         (let [x (chan buffer-size xf ex)]
-          (tap (get (out-mult? this) state) x)
+          (tap (get (out-mult this) state) x)
           x))
       AsyncSTMControl
       (disable [this]
-        (doseq [x (vals (state-channels? this))]
+        (doseq [x (vals (state-channels this))]
           (close! x))))))
 
 
 
 
-(letfn
-  [(path-history [x]
-     (println "Traversed  paths: " (conj (-> x data? :history) (state? x)))
-     (-> x (update-in [:data :history] conj (state? x))))]
-  (defstm simple-stm
-    ;; Transitions
-    [1 2 (safe (println "From 1->2"))
-     2 3 (safe (println "From 2->3"))
-     1 3 (safe (println "From 1->3"))
-     3 [4 5] identity
-     4 5 identity
-     5 6 (safe (println "From 5->6"))
-     #_(some identity
-             ((juxt
-                (with-stm x
-                  (-> x
-                      (assoc-in [:data :turbo] 1)))
-                (with-stm x
-                  (-> x
-                      (assoc-in [:data :turbo] 100)))) %))
-     ;:any 1 path-history]
-     [1 2 3 4 5 6] :any path-history]
-    ;; Validators
-    [1 3 (fn [_] false)]))
+(comment
+  (letfn
+    [(path-history [x]
+       (println "Traversed  paths: " (conj (-> x data? :history) (state? x)))
+       (-> x (update-in [:data :history] conj (state? x))))]
+    (defstm simple-stm
+      ;; Transitions
+      [1 2 (safe (println "From 1->2"))
+       2 3 (safe (println "From 2->3"))
+       1 3 (safe (println "From 1->3"))
+       3 [4 5] identity
+       4 5 identity
+       5 6 (safe (println "From 5->6"))
+       #_(some identity
+               ((juxt
+                  (with-stm x
+                    (-> x
+                        (assoc-in [:data :turbo] 1)))
+                  (with-stm x
+                    (-> x
+                        (assoc-in [:data :turbo] 100)))) %))
+       ;:any 1 path-history]
+       [1 2 3 4 5 6] :any path-history]
+      ;; Validators
+      [1 3 (fn [_] false)])))

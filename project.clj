@@ -3,15 +3,15 @@
                strives to simulate state machine behavior."
   :dependencies [[org.clojure/clojure "1.7.0"]
                  [org.clojure/core.async "0.1.346.0-17112a-alpha"]
-                 [org.clojure/clojurescript "0.0-3308"]]
+                 [org.clojure/clojurescript "1.7.145"]]
   ;:aot :all
   :source-paths ["src-cljc" "test"]
   :test-paths ["test/dreamcatcher"]
-  :profiles {:dev {:dependencies [[reagent "0.5.0"]
-                                  [midje "1.6.3"]
-                                  [ring "1.4.0-RC1"]
-                                  [compojure "1.3.4"]
-                                  [http-kit "2.1.18"]
+  :profiles {:dev {:dependencies [[reagent "0.5.1"]
+                                  [midje "1.7.0"]
+                                  [ring "1.4.0"]
+                                  [compojure "1.4.0"]
+                                  [http-kit "2.1.19"]
                                   [prismatic/dommy "1.1.0"]
                                   [hiccup "1.0.5"]]
                    :source-paths ["dev-src/cljc"]}}
