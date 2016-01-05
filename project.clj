@@ -7,12 +7,12 @@
   ;:aot :all
   :source-paths ["src-cljc" "test"]
   :test-paths ["test/dreamcatcher"]
-  :profiles {:dev {:dependencies [[reagent "0.5.1"]
-                                  [midje "1.7.0"]
+  :profiles {:dev {:dependencies [[midje "1.7.0"]
                                   [ring "1.4.0"]
                                   [compojure "1.4.0"]
                                   [http-kit "2.1.19"]
                                   [prismatic/dommy "1.1.0"]
+                                  [org.omcljs/om "0.9.0"]
                                   [hiccup "1.0.5"]]
                    :source-paths ["dev-src/cljc"]}}
   :clean-targets ^{:private false} [:target-path "out" "resource/public/js"]
@@ -28,17 +28,17 @@
                                 ;:optimizations :advanced
                                 ;:optimizations :simple
                                 :pretty-print false}}
-               :play {:source-paths ["dev-src/cljs/playground"]
+               :play {:source-paths ["dev-src/cljc/playground"]
                       :figwheel true
                       :compiler {:output-to "resources/public/js/playground.js"
                                  :output-dir "resources/public/js/out"
                                  :asset-path "js/out"
-                                 :main playground.core
+                                 :main playground.om
                                  ;;:optimizations :advanced
                                  :optimizations :none
                                  ;:optimizations :simple
                                  :pretty-print true}}
-               :server {:source-paths ["dev-src/cljs/playground-server"]
+               :server {:source-paths ["dev-src/cljc/playground-server"]
                         :compiler {:output-to "resources/public/js/server.js"
                                    :target :nodejs
                                    :optimizations :simple

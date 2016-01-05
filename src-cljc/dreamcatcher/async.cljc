@@ -19,6 +19,7 @@
   (out-mult [this] "Function returns map with states as keys, and mult objects as vals. All states
   are mix/mult so it is possible to tap and admix any one of state channels.")
   (state-channels [this] "Function returns map with {state state-channel} mapping.")
+  (get-state-channel [this state] "Function returns target state channel")
   (transition-channels [this] "Function returns transitions mapping. First level are source states,
   afterward is destination state and transition-channel that is transduced
   with STM transition."))
@@ -78,11 +79,13 @@
       (in-mix [_] mix-states)
       (out-mult [_] mult-states)
       (state-channels [_] channeled-states)
+      (get-state-channel [_ state] (get channeled-states state))
       (transition-channels [_] transition-channels)
       AsyncSTMIO
       (inject [this state data]
-        (async/put! (get (state-channels this) state) (make-machine-instance stm state data)))
-      (suck [this state] (suck this state 1))
+        (async/put! (get-state-channel this state) (make-machine-instance stm state data)))
+      (suck [this state]
+        (suck this state 1))
       (suck [this state buffer-size]
         (let [x (chan buffer-size)]
           (tap (get (out-mult this) state) x)
@@ -100,31 +103,43 @@
         (doseq [x (vals (state-channels this))]
           (close! x))))))
 
-
+;; Additional utils
+(defn ground-channel [channel]
+  (async/go
+    (while (not (nil? (async/<! channel))))))
 
 
 (comment
   (letfn
     [(path-history [x]
-       (println "Traversed  paths: " (conj (-> x data? :history) (state? x)))
-       (-> x (update-in [:data :history] conj (state? x))))]
+       (if (-> x :data map?)
+         (do
+           (println "Traversed  paths: " (conj (-> x data? :history) (state? x)))
+           (-> x (update-in [:data :history] conj (state? x))))
+         x))
+     (inc-counter [x]
+       (update-in x [:data :counter] inc))
+     (print-state-counter [{{:keys [counter name]} :data :as stm-state}]
+       (println "Final counter state for " name " is: " counter)
+       stm-state)]
     (defstm simple-stm
       ;; Transitions
-      [1 2 (safe (println "From 1->2"))
-       2 3 (safe (println "From 2->3"))
-       1 3 (safe (println "From 1->3"))
+      [1 2 (with-stm x
+             (println "From 1->2" (state? x))
+             (inc-counter x))
+       2 3 (with-stm x
+             (println "From 2->3" (state? x))
+             (inc-counter x))
+       1 3 (with-stm x
+             (println "From 1->3" (state? x))
+             (inc-counter x))
        3 [4 5] identity
        4 5 identity
-       5 6 (safe (println "From 5->6"))
-       #_(some identity
-               ((juxt
-                  (with-stm x
-                    (-> x
-                        (assoc-in [:data :turbo] 1)))
-                  (with-stm x
-                    (-> x
-                        (assoc-in [:data :turbo] 100)))) %))
-       ;:any 1 path-history]
-       [1 2 3 4 5 6] :any path-history]
+       5 6 (with-stm x
+             (println (state? x))
+             (println "From 5->6")
+             (inc-counter x))
+       :any 6 print-state-counter
+       [1 2 3 4 5 6] :any path-history #_(safe (println "HERE"))]
       ;; Validators
       [1 3 (fn [_] false)])))
