@@ -1,15 +1,16 @@
 (ns dreamcatcher.async
-  #?(:cljs (:require-macros [dreamcatcher.core :refer [defstm with-stm safe]]))
+  #?(:cljs (:require-macros [dreamcatcher.core :refer [defstm with-stm safe]]
+                            [clojure.core.async :refer [go]]))
   #?(:clj
-      (:require [dreamcatcher.util :refer [get-states get-transitions]]
-                ;; Only testing
-                [dreamcatcher.core :refer [safe defstm with-stm move state-changed? make-machine-instance data? state? make-machine-instance]]
-                [clojure.core.async :as async :refer [mult mix chan tap admix close! put! take!]])
+      (:require
+        [dreamcatcher.core :refer [move state-changed? make-machine-instance]]
+        [dreamcatcher.util :refer [get-states get-transitions]]
+        [clojure.core.async :as async :refer [mult mix chan tap admix close! put! take! go]])
      :cljs
-     (:require [dreamcatcher.util :refer [get-states get-transitions]]
-               ;; Only testing
-               [dreamcatcher.core :refer [move state-changed? make-machine-instance data? state? make-machine-instance]]
-               [cljs.core.async :as async :refer [mult mix chan tap admix close! put! take!]])))
+     (:require
+       [dreamcatcher.core :refer [move state-changed? make-machine-instance]]
+       [dreamcatcher.util :refer [get-states get-transitions]]
+       [cljs.core.async :as async :refer [mult mix chan tap admix close! put! take!]])))
 
 
 (defprotocol AsyncSTMData
@@ -43,7 +44,7 @@
   [stm]
   (let [states (get-states stm)
         channeled-states (reduce (fn [channel-map channel-name] (assoc channel-map channel-name (chan))) {} states)
-        mult-states  (reduce (fn [mult-map state] (assoc mult-map state (mult (get channeled-states state)))) {} states)
+        mult-states (reduce (fn [mult-map state] (assoc mult-map state (mult (get channeled-states state)))) {} states)
         ;; TODO - decide if states with no output transition should be "mult/ed" or not
         mix-states (reduce (fn [mix-map state] (assoc mix-map state (mix (get channeled-states state)))) {} states)
         channel-move (fn [next-state]
@@ -105,41 +106,5 @@
 
 ;; Additional utils
 (defn ground-channel [channel]
-  (async/go
+  (go
     (while (not (nil? (async/<! channel))))))
-
-
-(comment
-  (letfn
-    [(path-history [x]
-       (if (-> x :data map?)
-         (do
-           (println "Traversed  paths: " (conj (-> x data? :history) (state? x)))
-           (-> x (update-in [:data :history] conj (state? x))))
-         x))
-     (inc-counter [x]
-       (update-in x [:data :counter] inc))
-     (print-state-counter [{{:keys [counter name]} :data :as stm-state}]
-       (println "Final counter state for " name " is: " counter)
-       stm-state)]
-    (defstm simple-stm
-      ;; Transitions
-      [1 2 (with-stm x
-             (println "From 1->2" (state? x))
-             (inc-counter x))
-       2 3 (with-stm x
-             (println "From 2->3" (state? x))
-             (inc-counter x))
-       1 3 (with-stm x
-             (println "From 1->3" (state? x))
-             (inc-counter x))
-       3 [4 5] identity
-       4 5 identity
-       5 6 (with-stm x
-             (println (state? x))
-             (println "From 5->6")
-             (inc-counter x))
-       :any 6 print-state-counter
-       [1 2 3 4 5 6] :any path-history #_(safe (println "HERE"))]
-      ;; Validators
-      [1 3 (fn [_] false)])))
