@@ -357,6 +357,8 @@
        (some tranverse paths)))))
 
 #?(:clj
-    (defmacro multimove [instance & states]
+    (defmacro multimove 
+      "Move STMInstance through series of states."
+      [instance & states]
       (let [movements# (map #(list 'move %) states)]
         `(-> ~instance ~@movements#))))
