@@ -3,12 +3,12 @@
                             [clojure.core.async :refer [go]]))
   #?(:clj
       (:require
-        [dreamcatcher.core :refer [move state-changed? make-machine-instance]]
+        [dreamcatcher.core :refer [move state-changed? make-machine-instance data?]]
         [dreamcatcher.util :refer [get-states get-transitions]]
         [clojure.core.async :as async :refer [mult mix chan tap admix close! put! take! go]])
      :cljs
      (:require
-       [dreamcatcher.core :refer [move state-changed? make-machine-instance]]
+       [dreamcatcher.core :refer [move state-changed? make-machine-instance data?]]
        [dreamcatcher.util :refer [get-states get-transitions]]
        [cljs.core.async :as async :refer [mult mix chan tap admix close! put! take!]])))
 
@@ -31,7 +31,8 @@
     [this state]
     [this state buffer-size]
     [this state buffer-size xf]
-    [this state buffer-size xf exh] "Creates a channel that taps into state channel with input params."))
+    [this state buffer-size xf exh] "Creates a channel that taps into state channel with input params.")
+  (penetrate [this state channel] "Taps input channel to input state."))
 
 (defprotocol AsyncSTMControl
   (disable [this] "Function closes all state channels, hence all transition channels are closed."))
@@ -41,7 +42,8 @@
   "Function refied async representation of STM instance
   that is interconnected with channels. States are represented with
   channels."
-  [stm]
+  [stm & {:keys [exception-fn]
+          :or [exception-fn (fn [_] nil)]}]
   (let [states (get-states stm)
         channeled-states (reduce (fn [channel-map channel-name] (assoc channel-map channel-name (chan))) {} states)
         mult-states (reduce (fn [mult-map state] (assoc mult-map state (mult (get channeled-states state)))) {} states)
@@ -60,7 +62,9 @@
                                                          :let [to-state (key transition)]]
                                                      (when-not (#{:any} to-state)
                                                        (let [tf (channel-move to-state)]
-                                                         {to-state (chan 1 (map tf) (fn [_] nil))}))))})))
+                                                         ;; TODO - Error fn for logging or stuf would be better 
+                                                         ;; than just retruning nil
+                                                         {to-state (chan 1 (map tf) exception-fn)}))))})))
         map-transition (fn [s transition]
                          (when-not (or (#{:any} s) (#{:any} (key transition)))
                            (let [target-state (key transition)
@@ -99,6 +103,11 @@
         (let [x (chan buffer-size xf ex)]
           (tap (get (out-mult this) state) x)
           x))
+      (penetrate [this state channel]
+        (async/pipeline 
+          1 
+          (get-state-channel this state)
+          (map #(make-machine-instance stm state (data? %))) channel))
       AsyncSTMControl
       (disable [this]
         (doseq [x (vals (state-channels this))]
