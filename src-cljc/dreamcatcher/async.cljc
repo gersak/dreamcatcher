@@ -1,5 +1,5 @@
 (ns dreamcatcher.async
-  #?(:cljs (:require-macros [dreamcatcher.core :refer [defstm with-stm safe]]
+  #?(:cljs (:require-macros [dreamcatcher.core :refer [defstm with-stm safe data?]]
                             [clojure.core.async :refer [go]]))
   #?(:clj
       (:require
@@ -8,7 +8,7 @@
         [clojure.core.async :as async :refer [mult mix chan tap admix close! put! take! go]])
      :cljs
      (:require
-       [dreamcatcher.core :refer [move state-changed? make-machine-instance data?]]
+       [dreamcatcher.core :refer [move state-changed? make-machine-instance]]
        [dreamcatcher.util :refer [get-states get-transitions]]
        [cljs.core.async :as async :refer [mult mix chan tap admix close! put! take!]])))
 
@@ -42,12 +42,21 @@
   "Function refied async representation of STM instance
   that is interconnected with channels. States are represented with
   channels."
-  [stm & {:keys [exception-fn]
-          :or [exception-fn (fn [_] nil)]}]
+  [stm & {:keys [exception-fn penetration-fn paralel-penetrations]
+          :or {exception-fn (fn [_] nil)
+               paralel-penetrations 1
+               penetration-fn  (fn [stm state]
+                                 ;; Wrapped for penetrating
+                                 ;; To enable custom penetrations in future...
+                                 ;; Returned function is of one argument and should
+                                 ;; return machine instance.
+                                 (fn [received-stm-instance] 
+                                   (make-machine-instance stm state (data? received-stm-instance))))}}]
   (let [states (get-states stm)
         channeled-states (reduce (fn [channel-map channel-name] (assoc channel-map channel-name (chan))) {} states)
         mult-states (reduce (fn [mult-map state] (assoc mult-map state (mult (get channeled-states state)))) {} states)
         ;; TODO - decide if states with no output transition should be "mult/ed" or not
+        ;; At the moment they are!
         mix-states (reduce (fn [mix-map state] (assoc mix-map state (mix (get channeled-states state)))) {} states)
         channel-move (fn [next-state]
                        (fn [instance]
@@ -104,10 +113,15 @@
           (tap (get (out-mult this) state) x)
           x))
       (penetrate [this state channel]
-        (async/pipeline 
-          1 
-          (get-state-channel this state)
-          (map #(make-machine-instance stm state (data? %))) channel))
+        (let [pipeline-transducer (penetration-fn stm state)]
+          (async/pipeline 
+            paralel-penetrations
+            (get-state-channel this state)
+            ;; When penetrating it is assumed that input channel is
+            ;; taken(sucked) from other dreamcatcher STM. So for this
+            ;; STM model new instance must be created with data that is
+            ;; Received from input channel. Hence:
+            (map pipeline-transducer) channel)))
       AsyncSTMControl
       (disable [this]
         (doseq [x (vals (state-channels this))]
