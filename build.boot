@@ -1,5 +1,9 @@
 (set-env!
   :source-paths #{"src-cljc"}
+  :repositories #(conj % ["clojars-deploy" {:url "https://clojars.org/repo"
+                                            ;:username (System/getenv "CLOJARS_USER")
+                                            ;:password (System/getenv "CLOJARS_PASS")
+                                            }])
   :dependencies '[[adzerk/boot-cljs "1.7.228-1"]
                   [adzerk/boot-reload "0.4.2"]
                   [adzerk/bootlaces "0.1.13"]
@@ -15,22 +19,25 @@
 (require '[adzerk.bootlaces :refer :all])
 (require '[funcool.boot-codeina :refer :all])
 
+
 (def +version+ "1.0.5")
+(def +jar+ "dreamcatcher.jar")
+
+(bootlaces! +version+)
+
 
 (task-options!
-  push {:repo-map 
-        {:url "https://clojars.org/kovacnica/dreamcatcher"
-         :username (System/getenv "CLOJARS_USER")
-         :password (System/getenv "CLOJARS_PASS")}}
+  push {:repo "clojars-deploy"
+        :gpg-sign false} 
   pom {:project 'kovacnica/dreamcatcher
        :version +version+}
-  jar {:manifest {"created-by" "Robert Gersak"}}
+  jar {:manifest {"created-by" "Robert Gersak"
+                  }
+       :file +jar+}
   apidoc {:version +version+
           :title "Dreamcatcher Core"
           :sources #{"src-cljc"}
           :description "Package for creating state machines and state machine instances."})
-
-(bootlaces! +version+)
 
 (deftask build
   "Build dreamcatcher and install localy"
