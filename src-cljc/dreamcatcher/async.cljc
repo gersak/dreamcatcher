@@ -128,6 +128,6 @@
           (close! x))))))
 
 ;; Additional utils
-(defn ground-channel [channel]
-  (go
-    (while (not (nil? (async/<! channel))))))
+#_(defn ground-channel [channel]
+    (go
+      (while (not (nil? (async/<! channel))))))
