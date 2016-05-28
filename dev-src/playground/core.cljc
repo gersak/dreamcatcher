@@ -5,8 +5,10 @@
                 [dreamcatcher.core :refer [safe defstm with-stm move state-changed? make-machine-instance data? state? make-machine-instance]]
                 [clojure.core.async :as async :refer [mult mix chan tap admix close! put! take! go]])
       :cljs
-      (:require [dreamcatcher.async :refer [wrap-async-machine data?]]
-                [dreamcatcher.core :refer [move state-changed? make-machine-instance data? state? make-machine-instance]]
+      (:require [dreamcatcher.async :refer [wrap-async-machine]]
+                [dreamcatcher.core 
+                 :refer [move state-changed? make-machine-instance data? state? make-machine-instance] 
+                 :refer-macros [defstm safe with-stm]]
                 [cljs.core.async :as async :refer [mult mix chan tap admix close! put! take!]])))
 
 (letfn
@@ -46,7 +48,7 @@
            (if (< (-> x data? :counter) 1000)
              false
              true))
-     3 4 (fn [_] false)])
+     3 4 (fn [_] true)])
   (defstm stm1
     [1 2 (with-stm x
            (println "STM1 From 1->2" (state? x))
@@ -68,7 +70,7 @@
            (println "STM2 From 2->3" (state? x))
              x)]))
 
-#_(def test-instance (wrap-async-machine simple-stm))
+(def test-instance (wrap-async-machine simple-stm))
 
 #_(inject test-instance 1 {:counter 0})
 #_(disable test-instance)

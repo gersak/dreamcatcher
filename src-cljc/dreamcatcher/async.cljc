@@ -8,7 +8,7 @@
         [clojure.core.async :as async :refer [mult mix chan tap admix close! put! take! go]])
      :cljs
      (:require
-       [dreamcatcher.core :refer [move state-changed? make-machine-instance]]
+       [dreamcatcher.core :refer [move state-changed? make-machine-instance data?]]
        [dreamcatcher.util :refer [get-states get-transitions]]
        [cljs.core.async :as async :refer [mult mix chan tap admix close! put! take!]])))
 
