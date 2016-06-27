@@ -104,11 +104,7 @@
   (task-options! 
     repl {:init-ns 'playground.core
           :skip-init true})
-  (println "Setting up environment")
   (set-env! :source-paths #{"dev-src" "src-cljc"}
             :resource-paths #{})
-  (println "Setting up Cider...")
-  (cider)
-  (println "Starting REPL...")
   (repl))
 

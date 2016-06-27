@@ -1,0 +1,2 @@
+{:require [playground.web]
+   :compiler-options {:asset-path "js/main.out"}}
