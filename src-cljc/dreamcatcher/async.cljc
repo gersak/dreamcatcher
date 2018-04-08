@@ -1,29 +1,38 @@
 (ns dreamcatcher.async
-  #?(:cljs (:require-macros [dreamcatcher.core :refer [defstm with-stm safe data?]]
-                            [clojure.core.async :refer [go]]))
+  #?(:cljs (:require-macros 
+             [dreamcatcher.core :refer [defstm with-stm safe]]
+             [cljs.core.async.macros :refer [go]]))
   #?(:clj
       (:require
-        [dreamcatcher.core :refer [move state-changed? make-machine-instance data?]]
+        [dreamcatcher.core :as dreamcatcher
+         :refer [move state-changed? make-machine-instance]]
         [dreamcatcher.util :refer [get-states get-transitions]]
         [clojure.core.async :as async :refer [mult mix chan tap admix close! put! take! go]])
      :cljs
      (:require
-       [dreamcatcher.core :refer [move state-changed? make-machine-instance]]
+       [dreamcatcher.core :as dreamcatcher
+        :refer [move state-changed? make-machine-instance]]
        [dreamcatcher.util :refer [get-states get-transitions]]
        [cljs.core.async :as async :refer [mult mix chan tap admix close! put! take!]])))
 
 
 (defprotocol AsyncSTMData
-  (in-mix [this]
-           "Function returns map with states as keys, and mix objects as vals. All states
-  are mix/mult so it is possible to tap and admix any one of state channels.")
-  (out-mult [this] "Function returns map with states as keys, and mult objects as vals. All states
-  are mix/mult so it is possible to tap and admix any one of state channels.")
+  (in-mix 
+    [this]
+    "Function returns map with states as keys, and mix objects as vals. All states
+     are mix/mult so it is possible to tap and admix any one of state channels.")
+  (out-mult 
+    [this] 
+    "Function returns map with states as keys, and mult objects as vals. All states
+     are mix/mult so it is possible to tap and admix any one of state channels.")
   (state-channels [this] "Function returns map with {state state-channel} mapping.")
   (get-state-channel [this state] "Function returns target state channel")
-  (transition-channels [this] "Function returns transitions mapping. First level are source states,
-  afterward is destination state and transition-channel that is transduced
-  with STM transition."))
+  (transition-channels 
+    [this] 
+    "Function returns transitions mapping. First level are source states,
+     afterward is destination state and transition-channel that is transduced
+     with STM transition."))
+
 
 (defprotocol AsyncSTMIO
   (inject [this state data] "Injects data to state channel.")
@@ -33,6 +42,7 @@
     [this state buffer-size xf]
     [this state buffer-size xf exh] "Creates a channel that taps into state channel with input params.")
   (penetrate [this state channel] "Taps input channel to input state."))
+
 
 (defprotocol AsyncSTMControl
   (disable [this] "Function closes all state channels, hence all transition channels are closed."))
@@ -51,7 +61,7 @@
                                  ;; Returned function is of one argument and should
                                  ;; return machine instance.
                                  (fn [received-stm-instance] 
-                                   (make-machine-instance stm state (data? received-stm-instance))))}}]
+                                   (make-machine-instance stm state (dreamcatcher/data received-stm-instance))))}}]
   (let [states (get-states stm)
         channeled-states (reduce (fn [channel-map channel-name] (assoc channel-map channel-name (chan))) {} states)
         mult-states (reduce (fn [mult-map state] (assoc mult-map state (mult (get channeled-states state)))) {} states)

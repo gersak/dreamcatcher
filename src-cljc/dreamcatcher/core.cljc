@@ -1,82 +1,160 @@
 (ns dreamcatcher.core
-  (:require #?(:clj [dreamcatcher.macros :as m])
-            [dreamcatcher.util :refer (get-state-mapping get-transitions get-validators has-transition? get-transition get-states)])
-  #?(:cljs
-      (:require-macros [dreamcatcher.macros :as m])))
+  #?(:cljs (:require-macros 
+             [dreamcatcher.macros :refer [add-statemachine-mapping]]))
+  (:require 
+    #?(:clj [dreamcatcher.macros :refer [add-statemachine-mapping]])
+    [dreamcatcher.util 
+     :refer [get-state-mapping 
+             get-transitions 
+             get-validators 
+             has-transition? 
+             get-transition 
+             get-states]]))
 
 (defprotocol STM
-  (state? [this] "Returns current state of instance")
-  (data? [this] "Returns data state of instance")
-  (stm? [this] "Returns STM reference"))
+  (state [this] "Returns current state of instance")
+  (set-data! [this data] "Sets data. Returns instance.")
+  (set-state! [this state] "Sets machine instance state. Returns instance.")
+  (data [this] "Returns data state of instance")
+  (stm [this] "Returns STM reference")
+  (set-stm! [this stm] "Sets statemachine instance with STM")
+  (context [this] "Returns STM optional context (setup/configuration)")
+  (set-context! [this context] "Sets STM context"))
+
+(defn update-data!
+  "Function updates instance data applying f to current instance data & arguments"
+  ([instance f]
+   {:pre [(satisfies? STM instance)]}
+   (set-data! instance (f (data instance))))
+  ([instance f x]
+   {:pre [(satisfies? STM instance)]}
+   (set-data! instance (f (data instance) x)))
+  ([instance f x y]
+   {:pre [(satisfies? STM instance)]}
+   (set-data! instance (f (data instance) x y)))
+  ([instance f x y z]
+   {:pre [(satisfies? STM instance)]}
+   (set-data! instance (f (data instance) x y z)))
+  ([instance f x y z & more]
+   {:pre [(satisfies? STM instance)]}
+   (set-data! instance (apply f (data instance) x y z more))))
+
+(defn update-state!
+  "Function updates instance state applying f to current instance state & arguments"
+  ([instance f]
+   {:pre [(satisfies? STM instance)]}
+   (set-state! instance (f (state instance))))
+  ([instance f x]
+   {:pre [(satisfies? STM instance)]}
+   (set-state! instance (f (state instance) x)))
+  ([instance f x y]
+   {:pre [(satisfies? STM instance)]}
+   (set-state! instance (f (state instance) x y)))
+  ([instance f x y z]
+   {:pre [(satisfies? STM instance)]}
+   (set-state! instance (f (state instance) x y z)))
+  ([instance f x y z & more]
+   {:pre [(satisfies? STM instance)]}
+   (set-state! instance (apply f (state instance) x y z more))))
+
+(defn update-context!
+  "Function updates instance context applying f to current instance context & arguments"
+  ([instance f]
+   {:pre [(satisfies? STM instance)]}
+   (set-context! instance (f (context instance))))
+  ([instance f x]
+   {:pre [(satisfies? STM instance)]}
+   (set-context! instance (f (context instance) x)))
+  ([instance f x y]
+   {:pre [(satisfies? STM instance)]}
+   (set-context! instance (f (context instance) x y)))
+  ([instance f x y z]
+   {:pre [(satisfies? STM instance)]}
+   (set-context! instance (f (context instance) x y z)))
+  ([instance f x y z & more]
+   {:pre [(satisfies? STM instance)]}
+   (set-context! instance (apply f (context instance) x y z more))))
 
 (defprotocol STMMovement
-  (choices? [this]
- "Returns reachable states from current state
-  of state machine instance in form of vector.
+  (choices? 
+    [this]
+    "Returns reachable states from current state
+     of state machine instance in form of vector.
 
-  First directly reachable states are calculated
-  and set as first choices. If there are states in
-  STM of this instance that are reachable from
-  :any state other than choices than that states
-  are also valid and are inserted after direct
-  transitions.")
-  (candidates? [this]
- "Returns candidate states that are valid to exit from
-  current state and transit to next-state. It is not
-  a guarante that it will succeed since transition can
-  change state of instance so it will not pass :any to
-  :next-state validation.")
-  (move [this next-state]
-  "Makes attempt to move machine instance to next state. Input
-  argument is machine instance and 3 functions are applied.
+     First directly reachable states are calculated
+     and set as first choices. If there are states in
+     STM of this instance that are reachable from
+     :any state other than choices than that states
+     are also valid and are inserted after direct
+     transitions.")
+  (candidates? 
+    [this]
+    "Returns candidate states that are valid to exit from
+     current state and transit to next-state. It is not
+     a guarante that it will succeed since transition can
+     change state of instance so it will not pass :any to
+     :next-state validation.")
+  (move 
+    [this next-state]
+    "Makes attempt to move machine instance to next state. Input
+     argument is machine instance and 3 functions are applied.
 
-  Order of operations is :
+     Order of operations is :
 
-  1* from current state -> any state - If there is general outgoing function in current state
-  2* transition fn from state -> next-state - Direct transtion between states
-  3* from any state -> next-state fn - If there is general incoming function in next state
+     1* from current state -> any state - If there is general outgoing function in current state
+     2* transition fn from state -> next-state - Direct transtion between states
+     3* from any state -> next-state fn - If there is general incoming function in next state
 
-  Return value is map, that is STM instance." ))
+     Return value is map, that is STM instance.
+
+     DRAGONS: Movement doesn't throw exception if move doesn't happen because
+     of machine state validation. Movement either happens or id doesn't. Check state after
+     movement if that is important to your setup and throw exceptions in validators
+     and transitions." ))
 
 (defprotocol STMLife
-  (give-life! [this] [this life-choices]
-  "Give STM instance life... If no choices
-  are given, than instance is free to live on
-  its own. If there are choices that restrict
-  machine behaviour than that rules are applied.
+  (give-life! 
+    [this] [this life-choices]
+    "Give STM instance life... If no choices
+     are given, than instance is free to live on
+     its own. If there are choices that restrict
+     machine behaviour than that rules are applied.
 
-  Choices are supposed to be map in form:
+     Choices are supposed to be map in form:
 
-  {:state1 [:state2 :state3 :state1 :state1]}
+     {:state1 [:state2 :state3 :state1 :state1]}
 
-  This means that if machine is in :state1 first
-  choice is :state2, second choice is :state3 etc.")
+     This means that if machine is in :state1 first
+     choice is :state2, second choice is :state3 etc.")
   (alive? [this])
   (kill! [this])
-  (act! [this]
-   "Moves state machine to next state. If transition
-  priority is defined with give-life! function than
-  that rules are applied. Otherwise state machine
-  acts free of will..."))
+  (act! 
+    [this]
+    "Moves state machine to next state. If transition
+     priority is defined with give-life! function, than
+     those rule order is applied. Otherwise state machine
+     acts free of will... "))
 
 
 (defprotocol STMPath
-  (to-> [this target]
-  "Calculates all paths from current state
-  to end state")
-  (reach-state [this target]
-   "Function strives to reach input state from
-  current state of STM instance. Functions that are
-  defined as transitions or indirect :any functions
-  SHOULD NOT operate on other constructs.
+  (to-> 
+    [this target]
+    "Calculates all paths from current state
+     to end state")
+  (reach-state 
+    [this target]
+    "Function strives to reach input state from
+     current state of STM instance. Functions that are
+     defined as transitions or indirect :any functions
+     should operate on other constructs CAREFULLY! 
 
-  Reason is: While trying to reach certain
-  state with reach-state function many transitions
-  are activated and end result is first possible
-  path from current state to target state with all
-  transitions applied inbetween.
+     Reason is: While trying to reach certain
+     state with reach-state function many transitions
+     are activated and end result is first possible
+     path from current state to target state with all
+     transitions applied inbetween.
 
-  Somewhat -> macro with validators."))
+     Somewhat -> macro with validators."))
 
 ;; State Machine is a simple map...
 ;; That contains transitons from one state to another.
@@ -86,23 +164,23 @@
 ;; StateMachine generation
 
 (defn add-state [stm state]
-  (assert (not (or (= :state state) (= :state state) (= :stm state))) "[:state :data :stm] are special keys")
+  (assert (not (#{:state :data :stm} state)) "[:state :data :stm] are special keys")
   (swap! stm assoc state nil))
 
 (defn remove-state [stm state]
   (swap! stm #(dissoc % state)))
 
-(m/add-statemachine-mapping validator ::validators)
-(m/add-statemachine-mapping transition ::transitions)
+(add-statemachine-mapping validator ::validators)
+(add-statemachine-mapping transition ::transitions)
 
 (defn make-state-machine
   "Input values transitions and validators are ment to
-  be sequences with recuring pattern
+   be sequences with recuring pattern
 
-  [from-state to-state function from-state to-state... to-state function]
+   [from-state to-state function from-state to-state... to-state function]
 
-  \"function\" takes one argument and that is state
-  machine instance data. Result is map."
+   \"function\" takes one argument and that is state
+   machine instance data. Result is map."
   ([transitions] (make-state-machine transitions nil))
   ([transitions validators]
    (let [stm (atom nil)
@@ -114,67 +192,61 @@
      (doseq [x v] (apply add-validator (conj x stm)))
      @stm)))
 
-#?(:clj
-    (defmacro defstm
-      "Macro defines stm with make-stat-machine function.
-      STM is persistent hash-map."
-      [stm-name & [transitions validators]]
-      (if-not validators
-        `(def ~stm-name (make-state-machine ~transitions))
-        `(def ~stm-name (make-state-machine ~transitions ~validators)))))
+(defmacro defstm
+  "Macro defines stm with make-stat-machine function.
+   STM is persistent hash-map."
+  [stm-name & [transitions validators]]
+  (if-not validators
+    `(def ~stm-name (make-state-machine ~transitions))
+    `(def ~stm-name (make-state-machine ~transitions ~validators))))
 
-#?(:clj
-    (defmacro safe
-      "Simple wrapping macro for easier
-      defjob definition. Wraps body in a
-      function THAT returns same argument
-      that was argument. Body parts are
-      evaluated thorougly."
-      [& body]
-      `(fn  [x#]
-         (do ~@body) x#)))
+(defmacro safe
+  "Simple wrapping macro for easier
+   defjob definition. Wraps body in a
+   function THAT returns same argument
+   that was argument. Body parts are
+   evaluated thorougly."
+  [& body]
+  `(fn  [x#]
+     (do ~@body) x#))
 
-#?(:clj
-    (defmacro with-stm
-      "Macro defines function of one argument
-      with given name.
+(defmacro with-stm
+  "Macro defines function of one argument
+   with given name.
 
-      (fn [stm-name] &body)
+   (fn [stm-name] &body)
 
-      Make sure that return result is transformed
-      state machine instance"
-      [stm-name & body]
-      `(fn [~stm-name]
-         (do ~@body))))
+   Make sure that return result is transformed
+   state machine instance"
+  [stm-name & body]
+  `(fn [~stm-name]
+     (do ~@body)))
 
 ;; Machine instance is map that represents
 ;; "real-machine" that has real state and real data
 ;; and has transitions defined in stm input argument
 ;;
-;; (atom {::state nil ::data nil ::stm nil})
-(defrecord STMInstance [stm state data options]
+;; (atom {::state nil :data nil :stm nil})
+(defrecord STMInstance [stm state data context]
   STM
-  (stm? [_] stm)
-  (state? [_] state)
-  (data? [_] data))
+  (stm [_] stm)
+  (state [_] state)
+  (set-state! [this state'] (assoc this :state state'))
+  (set-context! [this context'] (assoc this :context context'))
+  (set-data! [this data'] (assoc this :data data'))
+  (data [_] data)
+  (context [_] context))
 
 
-(defn make-stm-instance
-  "Constructor for makin STMInstance"
-  ([stm] (->STMInstance stm nil nil nil))
-  ([stm state] (->STMInstance stm state nil nil))
-  ([stm state data] (->STMInstance stm state data nil))
-  ([stm state data options] (->STMInstance stm state data options)))
-
-(defn- valid-transition?
+(defn valid-transition?
   "Computes if transition from-state to to-state is valid.
-  If there is any type of validator function than function
-  result decides if transition is valid. If no validator
-  is provided than transition is valid.
+   If there is any type of validator function than function
+   result decides if transition is valid. If no validator
+   is provided than transition is valid.
 
-  If validator is not a function, transition is not valid."
+   If validator is not a function, transition is not valid."
   [^STMInstance instance from-state to-state]
-  (if-let [vf (get (::validators (get-state-mapping (stm? instance) from-state)) to-state)]
+  (if-let [vf (get (::validators (get-state-mapping (stm instance) from-state)) to-state)]
     (when (fn? vf)
       (vf instance))
     true))
@@ -185,10 +257,13 @@
 
 (defn make-machine-instance
   "Return STM instance with initial state. Return value is map
-  with reference to ::stm and with parameters ::data and ::state
-  that represents current data and current state."
-  ([stm initial-state] (make-machine-instance stm initial-state nil))
+   with reference to ::stm and with parameters :data and :state
+   that represents current data and current state."
+  ([stm initial-state] 
+   (assert ((set (keys stm)) initial-state) "Initial state not part of STM")
+   (make-machine-instance stm initial-state nil))
   ([stm initial-state data]
+   (assert ((set (keys stm)) initial-state) "Initial state not part of STM")
    (STMInstance. stm initial-state data nil)))
 
 ;; Instance operators
@@ -198,17 +273,13 @@
 
 (defn- get-reachable-states
   "Returns reachable states from positon of instance
-  within state machine."
+   within state machine."
   ([^STMInstance instance]
-   (get-reachable-states instance (state? instance)))
+   (get-reachable-states instance (state instance)))
   ([^STMInstance instance state]
-   (->> (keys (get-transitions (stm? instance) state))
+   (->> (keys (get-transitions (stm instance) state))
         vec
         (remove (partial = :any)))))
-
-(defn reset-state! [^STMInstance instance new-state]
-  "Resets STM state. STM data is not changed"
-  (assoc instance :state new-state))
 
 (defn- step [^STMInstance instance from-state to-state fun]
   (when-not (nil? instance)
@@ -222,13 +293,21 @@
 
 (defn- move-stm
   [^STMInstance instance to-state]
-  (if-let [stm (stm? instance)]
+  (if-let [stm (stm instance)]
     (do
-      (assert (contains? stm to-state) (str "STM doesn't contain state " to-state))
-      (assert
-        (has-transition? stm (state? instance) to-state)
-        (str "There is no transition function from state " (state? instance) " to state " to-state))
-      (let [from-state (state? instance)
+      (when-not (contains? stm to-state)
+        (ex-info 
+          (str "STM doesn't contain state " to-state)
+          {:type :dreamcatcher/movement
+           :instance instance
+           :to-state to-state}))
+      (when-not (has-transition? stm (state instance) to-state)
+        (ex-info
+          (str "There is no transition function from state " (state instance) " to state " to-state)
+          {:type :dreamcatcher/movement
+           :instance instance
+           :to-state to-state}))
+      (let [from-state (state instance)
             tfunction (or (get-transition stm from-state to-state) identity)
             in-fun (or
                      (get-transition stm :any to-state)
@@ -242,18 +321,22 @@
                                   (step :any to-state in-fun))]
           (assoc new-instance :state to-state)
           instance)))
-    (assert false (str "There is no state machine configured for this instance: " instance))))
+    (throw
+      (ex-info 
+        (str "There is no state machine configured for this instance: " instance)
+        {:type :dreamcatcher/definition
+         :instance instance}))))
 
 
 (defn- get-choices
-  ([^STMInstance x] (get-choices x (state? x)))
+  ([^STMInstance x] (get-choices x (state x)))
   ([^STMInstance x state]
-   (if-let [fix-choices (-> x :options ::life (get state))]
+   (if-let [fix-choices (-> x context ::life (get state))]
      fix-choices
-     (-> x stm? (get-transitions state) keys vec))))
+     (-> x stm (get-transitions state) keys vec))))
 
 (defn- get-valid-candidates
-  ([^STMInstance x] (get-valid-candidates x (state? x)))
+  ([^STMInstance x] (get-valid-candidates x (state x)))
   ([^STMInstance x state]
    (when-let [choices (seq (get-choices x state))]
      (when (valid-transition? x state :any)
@@ -263,19 +346,17 @@
 
 ;; State machine life and behaviour
 (defn- move-to-next-choice [^STMInstance x]
-  (let [choices (-> x :options ::life (get (state? x)))
+  (let [choices (-> x context ::life (get (state x)))
         next-choice (first choices)]
     (if next-choice
       (let [new-state (move-stm x next-choice)
-            changed-state (update-in new-state
-                                     [:options ::life (state? new-state)]
-                                     #(cond
-                                        (vector? %) (vec (rest %))
-                                        :else (concat (rest %) (take 1 %))))]
+            changed-state (update-context!
+                            x update-in [::life (state new-state)]
+                            #(cond
+                               (vector? %) (vec (rest %))
+                               :else (concat (rest %) (take 1 %))))]
         changed-state)
       x)))
-
-
 
 ;; Graph tranversing
 (defn- from->to
@@ -287,9 +368,7 @@
           visited? (fn [path state]
                      (not= -1 (.indexOf #?(:clj path :cljs (clj->js path)) state)))
           generate-paths (fn [current-path]
-                           ;(println "Current path " current-path)
                            (let [c (last current-path)]
-                             #_(println "Is c=end? " (= c end))
                              (if-not (= c end)
                                (if-let [targets (seq
                                                   (concat
@@ -310,7 +389,12 @@
 
 
 (defn state-changed? [^STMInstance state1 ^STMInstance state2]
-  (not= (select-keys state1 [:state :data :stm]) (select-keys state2 [:state :data :stm])))
+  (boolean
+    (some
+      #(not= %1 %2)
+      [(map state state1 state2)
+       (map data state1 state2)
+       (map stm state1 state2)])))
 
 (extend-type STMInstance
   STMMovement
@@ -320,45 +404,43 @@
   STMLife
   (give-life!
     ([this choices] (let [proposed-life (reduce conj (array-map)
-                                                (for [x (keys (dissoc (stm? this) :any))]
+                                                (for [x (keys (dissoc (stm this) :any))]
                                                   [x (get-reachable-states this x)]))]
-                      (-> this
-                          (assoc-in [:options ::alive?] true)
-                          (assoc-in [:options ::life] proposed-life)
-                          (update-in [:options ::life] merge choices))))
+                      (cond-> (update-context! this assoc ::alive? true)
+                        (seq proposed-life) (update-context! assoc ::life proposed-life)
+                        (seq choices) (update-context! update ::life merge choices))))
     ([this] (give-life! this nil)))
-  (alive? [this] (get-in this [:options ::alive?]))
-  (kill! [this] (assoc-in this [:options ::alive?] false))
+  (alive? [this] (get (context this) ::alive?))
+  (kill! [this] (update-context! this assoc ::alive false))
   (act!
     ([this]
-       (assert ((comp ::alive? :options) this) "Instance is not alive! First give it life...")
-       (loop [new-state (move-to-next-choice this)]
-         (if (state-changed? this new-state)
-           new-state
-           (recur (move-to-next-choice new-state))))))
+     (assert ((comp ::alive? context) this) "Instance is not alive! First give it life...")
+     (loop [new-state (move-to-next-choice this)]
+       (if (state-changed? this new-state)
+         new-state
+         (recur (move-to-next-choice new-state))))))
   STMPath
   (to->
     ([this target]
-     (from->to (stm? this) (state? this) target true)))
+     (from->to (stm this) (state this) target true)))
   (reach-state
-    ([instance state]
-     (let [stm (stm? instance)
-           paths (to-> instance state)
+    ([instance state']
+     (let [stm (stm instance)
+           paths (to-> instance state')
            move (memoize move) ;; Do not apply transitions more than once per try
            tranverse (fn [path]
                        (loop [x instance
-                              c (state? instance)
+                              c (state instance)
                               path-left path]
-                         (if (= c state) x
+                         (if (= c state') x
                            (if-not (seq path-left) nil
                              (let [next-x (move x (first path-left))]
-                               (if (= (state? next-x) c) nil
-                                 (recur next-x (state? next-x) (rest path-left))))))))]
+                               (if (= (state next-x) c) nil
+                                 (recur next-x (state next-x) (rest path-left))))))))]
        (some tranverse paths)))))
 
-#?(:clj
-    (defmacro multimove 
-      "Move STMInstance through series of states."
-      [instance & states]
-      (let [movements# (map #(list 'move %) states)]
-        `(-> ~instance ~@movements#))))
+(defmacro multimove 
+  "Move STMInstance through series of states."
+  [instance & states]
+  (let [movements# (map #(list `move %) states)]
+    `(-> ~instance ~@movements#)))
