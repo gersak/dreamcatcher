@@ -210,6 +210,9 @@
   `(fn  [x#]
      (do ~@body) x#))
 
+
+
+;; DEPRECATED - use as->
 (defmacro with-stm
   "Macro defines function of one argument
    with given name.
@@ -234,6 +237,7 @@
   (set-state! [this state'] (assoc this :state state'))
   (set-context! [this context'] (assoc this :context context'))
   (set-data! [this data'] (assoc this :data data'))
+  (set-stm! [this stm'] (assoc this :stm stm'))
   (data [_] data)
   (context [_] context))
 
@@ -389,12 +393,8 @@
 
 
 (defn state-changed? [^STMInstance state1 ^STMInstance state2]
-  (boolean
-    (some
-      #(not= %1 %2)
-      [(map state state1 state2)
-       (map data state1 state2)
-       (map stm state1 state2)])))
+  (let [project (juxt state data stm)]
+    (boolean (some false? (map = (project state1) (project state2))))))
 
 (extend-type STMInstance
   STMMovement

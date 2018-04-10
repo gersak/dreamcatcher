@@ -29,6 +29,7 @@
   "Starts up development environment"
   []
   (set-env! :source-paths #{"dev-src" "src-cljc"})
+  (repl)
   (comp 
     (wait)
     (repl :server true)))
