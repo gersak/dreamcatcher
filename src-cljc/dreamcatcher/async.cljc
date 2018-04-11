@@ -75,8 +75,18 @@
   "Function refied async representation of STM instance
   that is interconnected with chanels. States are represented with
   chanels."
-  [stm & {:keys [exception-fn penetration-fn parallel-penetrations]
+  [stm & {:keys [exception-fn 
+                 move-exception-handler
+                 penetration-fn 
+                 parallel-penetrations]
           :or {exception-fn (fn [_] nil)
+               move-exception-handler (fn [instance next-state]
+                                        (throw 
+                                          (ex-info 
+                                            (str "Couldn't transition to state " next-state)
+                                            {:type :dreamcatcher/movement 
+                                             :instance instance
+                                             :next-state next-state})))
                parallel-penetrations 1
                penetration-fn  (fn [stm state]
                                  ;; Wrapped for penetrating
@@ -110,10 +120,7 @@
                          (let [temp-state (move instance next-state)]
                            (if (state-changed? temp-state instance)
                              temp-state
-                             (throw 
-                               (ex-info 
-                                 (str "Couldn't transition to state " next-state)
-                                 instance))))))
+                             (move-exception-handler instance next-state)))))
         transition-chanels (reduce 
                               merge
                               (for [s states]
