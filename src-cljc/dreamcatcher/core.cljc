@@ -353,14 +353,16 @@
   (let [choices (-> x context ::life (get (state x)))
         next-choice (first choices)]
     (if next-choice
-      (let [new-state (move-stm x next-choice)
-            changed-state (update-context!
-                            x update-in [::life (state new-state)]
-                            #(cond
-                               (vector? %) (vec (rest %))
-                               :else (concat (rest %) (take 1 %))))]
-        changed-state)
-      x)))
+      (let [new-state (move-stm x next-choice)]
+        (update-context!
+          new-state update-in [::life (state new-state)]
+          #(cond
+             (vector? %) (vec (rest %))
+             :else (concat (rest %) (take 1 %)))))
+      (throw 
+        (ex-info 
+          "Instance has no choice whatsoever!"
+          {:instance x})))))
 
 ;; Graph tranversing
 (defn- from->to
@@ -411,7 +413,7 @@
                         (seq choices) (update-context! update ::life merge choices))))
     ([this] (give-life! this nil)))
   (alive? [this] (get (context this) ::alive?))
-  (kill! [this] (update-context! this assoc ::alive false))
+  (kill! [this] (update-context! this assoc ::alive? false))
   (act!
     ([this]
      (assert ((comp ::alive? context) this) "Instance is not alive! First give it life...")
