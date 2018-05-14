@@ -170,7 +170,7 @@
 (defn remove-state [stm state]
   (swap! stm #(dissoc % state)))
 
-(add-statemachine-mapping validator ::validators)
+(add-statemachine-mapping validator  ::validators)
 (add-statemachine-mapping transition ::transitions)
 
 (defn make-state-machine
@@ -200,9 +200,12 @@
     `(def ~stm-name (make-state-machine ~transitions))
     `(def ~stm-name (make-state-machine ~transitions ~validators))))
 
+
+
+;; DEPRECATED
 (defmacro safe
   "Simple wrapping macro for easier
-   defjob definition. Wraps body in a
+    definition. Wraps body in a
    function THAT returns same argument
    that was argument. Body parts are
    evaluated thorougly."
@@ -255,19 +258,15 @@
       (vf instance))
     true))
 
-(defn invalid
-  "Indended to use as validator stoper."
-  [_] false)
-
 (defn make-machine-instance
   "Return STM instance with initial state. Return value is map
    with reference to ::stm and with parameters :data and :state
    that represents current data and current state."
   ([stm initial-state] 
-   (assert ((set (keys stm)) initial-state) "Initial state not part of STM")
+   {:pre [((set (keys stm)) initial-state)]}
    (make-machine-instance stm initial-state nil))
   ([stm initial-state data]
-   (assert ((set (keys stm)) initial-state) "Initial state not part of STM")
+   {:pre [((set (keys stm)) initial-state)]}
    (STMInstance. stm initial-state data nil)))
 
 ;; Instance operators
@@ -275,7 +274,7 @@
 ;; Instance has a state that can be changed with transition
 ;; if transition is valid.
 
-(defn- get-reachable-states
+(defn get-reachable-states
   "Returns reachable states from positon of instance
    within state machine."
   ([^STMInstance instance]
@@ -292,8 +291,13 @@
             (valid-transition? instance :any to-state)
             (valid-transition? instance from-state :any))
       (let [new-state (fun instance)]
-        (assert (instance? STMInstance new-state) (str "Input fun takes old STMInstance and produces new STMInstance. Please asure that fn: " fun " returns STMInstance."))
+        (assert (satisfies? STM instance)
+                (str "Input fun takes old STM instance and produces new STM instance. Please asure that fn: " fun " returns implentation of STM protocol."))
         new-state))))
+
+(defn state-changed? [^STMInstance state1 ^STMInstance state2]
+  (let [project (juxt state data stm)]
+    (boolean (some false? (map = (project state1) (project state2))))))
 
 (defn- move-stm
   [^STMInstance instance to-state]
@@ -323,7 +327,15 @@
                                   (step from-state :any out-fun)
                                   (step from-state to-state tfunction)
                                   (step :any to-state in-fun))]
-          (assoc new-instance :state to-state)
+          (do
+            ;; Add hook for aditional utils spying on instances
+            ;; Gets called only when transition already happened
+            ;; and doesn't affect new-instance
+            (when (state-changed? instance new-instance)
+              (when-let [always (get-transition stm :any :any)]
+                (when (fn? always)
+                  (always instance new-instance))))
+            (assoc new-instance :state to-state))
           instance)))
     (throw
       (ex-info 
@@ -365,38 +377,41 @@
           {:instance x})))))
 
 ;; Graph tranversing
-(defn- from->to
-  [stm start end direct?]
-  (assert (contains? stm end) (str "STM doesn't contain state " end))
-  (if (= start end)
-    nil
-    (let [stm (if direct? (dissoc stm :any) stm)
-          visited? (fn [path state]
-                     (not= -1 (.indexOf #?(:clj path :cljs (clj->js path)) state)))
-          generate-paths (fn [current-path]
-                           (let [c (last current-path)]
-                             (if-not (= c end)
-                               (if-let [targets (seq
-                                                  (concat
-                                                    (-> stm (get-transitions (or c start)) keys)
-                                                    (keys (get-transitions stm :any))))]
-                                 (let [expanded-paths (seq (map #(if-not (visited? current-path %)
-                                                                   (vec (conj current-path %))
-                                                                   current-path) targets))]
-                                   expanded-paths)
-                                 [current-path])
-                               [current-path])))]
-      (loop [paths [[]]]
-        (let [new-paths (reduce into #{} (map generate-paths paths))]
-          (if (= new-paths paths) (->> paths
-                                       (remove #(= -1 (.indexOf % #?(:clj end :cljs (clj->js end))) ))
-                                       (sort-by count))
-            (recur new-paths)))))))
+(defn from->to
+  ([stm start end] (from->to stm start end true))
+  ([stm start end direct?]
+   ;; check if stm contains end state
+   {:pre [(contains? stm end)]}
+   (if (= start end)
+     nil
+     (let [stm (if direct? (dissoc stm :any) stm)]
+       (letfn [(visited? [path state]
+                 (not= -1 (.indexOf #?(:clj path :cljs (clj->js path)) state)))
+               (generate-paths [current-path]
+                 (let [c (last current-path)]
+                   (if-not (= c end)
+                     (if-let [targets (seq
+                                        (concat
+                                          (-> stm (get-transitions (or c start)) keys)
+                                          (when-not direct? (keys (get-transitions stm :any)))))]
+                       (let [expanded-paths (seq 
+                                              (map 
+                                                #(if-not (visited? current-path %)
+                                                   (vec (conj current-path %))
+                                                   current-path)
+                                                targets))]
+                         expanded-paths)
+                       [current-path])
+                     [current-path])))]
+         (loop [paths [[]]]
+           (let [new-paths (reduce into #{} (map generate-paths paths))]
+             (if (= new-paths paths) (->> paths
+                                          (remove #(= -1 (.indexOf % #?(:clj end :cljs (clj->js end))) ))
+                                          (sort-by count))
+               (recur new-paths)))))))))
 
 
-(defn state-changed? [^STMInstance state1 ^STMInstance state2]
-  (let [project (juxt state data stm)]
-    (boolean (some false? (map = (project state1) (project state2))))))
+
 
 (extend-type STMInstance
   STMMovement
