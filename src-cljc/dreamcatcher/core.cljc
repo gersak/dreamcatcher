@@ -347,9 +347,11 @@
 (defn- get-choices
   ([^STMInstance x] (get-choices x (state x)))
   ([^STMInstance x state]
-   (if-let [fix-choices (-> x context ::life (get state))]
-     fix-choices
-     (-> x stm (get-transitions state) keys vec))))
+   (remove 
+     #{:any}
+     (if-let [fix-choices (-> x context ::life (get state))]
+       fix-choices
+       (-> x stm (get-transitions state) keys vec)))))
 
 (defn- get-valid-candidates
   ([^STMInstance x] (get-valid-candidates x (state x)))
