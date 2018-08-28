@@ -1,12 +1,14 @@
 (ns playground.core
-  #?(:cljs (:require-macros  
-             [dreamcatcher.core :refer [defstm ]]
-             [clojure.core.async :refer [go]]))
+  #?(:cljs 
+     (:require-macros  
+       [dreamcatcher.core :refer [defstm ]]
+       [clojure.core.async :refer [go]]))
   (:require [dreamcatcher.async :refer :all]
             [dreamcatcher.core :as d 
-             :refer [safe with-stm move reach-state
+             :refer [safe with-stm move reach-state any-state
                      make-machine-instance state-changed?
-                     data update-data! state make-machine-instance]]
+                     data update-data! state make-machine-instance defstm
+                     states-other-than]]
             [clojure.core.async :as async 
              :refer [mult mix chan tap 
                      admix close! put! take! #?(:clj go)]]))
@@ -118,3 +120,21 @@
 
 (let [end-channel (suck test-connection-instance-1 5)]
   (penetrate test-connection-instance-2 1 end-channel))
+
+
+
+(defstm super
+  ['1 '2 identity
+   '2 '3 identity
+   '2 '_3 identity
+   '2 '__3 identity
+   '3 '4 identity
+   (states-other-than '1 '2 '3 '6) '6 identity
+   '2 any-state identity]
+  [(states-other-than '1 '2 '6) 6' (constantly false)])
+
+
+
+(def i (make-machine-instance super '2 {}))
+
+

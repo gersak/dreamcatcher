@@ -5,10 +5,10 @@
       (:require
         [dreamcatcher.core :as dreamcatcher
          :refer [move 
+                 any-state
                  state-changed? 
-                 make-machine-instance]]
-        [dreamcatcher.util 
-         :refer [get-states 
+                 make-machine-instance
+                 get-states 
                  get-transitions]]
         [clojure.core.async :as async 
          :refer [mult 
@@ -24,10 +24,10 @@
      (:require
        [dreamcatcher.core :as dreamcatcher
         :refer [move 
+                any-state
                 state-changed? 
-                make-machine-instance]]
-       [dreamcatcher.util 
-        :refer [get-states 
+                make-machine-instance
+                get-states 
                 get-transitions]]
        [cljs.core.async :as async 
         :refer [mult mix chan tap 
@@ -124,18 +124,18 @@
         transition-chanels (reduce 
                               merge
                               (for [s states]
-                                (when-not (#{:any} s)
+                                (when-not (#{:any any-state} s)
                                   {s (reduce 
                                        merge
                                        (for [transition (get-transitions stm s)
                                              :let [to-state (key transition)]]
-                                         (when-not (#{:any} to-state)
+                                         (when-not (#{:any any-state} to-state)
                                            (let [tf (chanel-move to-state)]
                                              ;; TODO - Error fn for logging or stuf would be better 
                                              ;; than just retruning nil
                                              {to-state (chan 1 (map tf) exception-fn)}))))})))
         map-transition (fn [s transition]
-                         (when-not (or (#{:any} s) (#{:any} (key transition)))
+                         (when-not (or (#{:any any-state} s) (#{:any any-state} (key transition)))
                            (let [target-state (key transition)
                                  transition-chanel (val transition)]
                              ;; Tap transition to source-state
