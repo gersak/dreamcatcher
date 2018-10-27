@@ -1,5 +1,7 @@
 (ns dreamcatcher.macros)
 
+(def ^:dynamic *warn-on-duplicate* true)
+
 (defmacro add-statemachine-mapping [fun-name mapping]
       "Creates two funcitons with prefixes add- and remove-
       attached to \"fun-name\""
@@ -24,8 +26,18 @@
             (doseq [x# from-states# y# to-states#]
                   (let [cm# (get-in @stm# [x# ~mapping])
                         ; nm# (reduce conj (array-map) (conj cm# [y# fun#]))
-                        nm# (assoc cm# y# fun#)]
-                        (swap! stm# assoc-in [x# ~mapping] nm#)))))
+                        nm# (assoc cm# y# fun#)
+                        mm# (meta @stm#)]
+                        ; (clojure.core/println "HI")
+                        (when (and
+                                (some? (get cm# y#))
+                                (not= fun# (get cm# y#)))
+                         #?(:clj (println (str "WARN: Overwriting " (get mm# :dreamcatcher/stm) " " ~(str fun-name) " " (pr-str x#) " -> " (pr-str y#)))
+                            :cljs (.log js/console (str "WARN: Overwriting " (get mm# :dreamcatcher/stm) " " ~(str fun-name) " " (pr-str x#) " -> " (pr-str y#)))))
+                        (reset! stm# 
+                               (with-meta 
+                                     (assoc-in @stm# [x# ~mapping] nm#)
+                                     (update mm# ~mapping conj from-state# to-state# fun#)))))))
 
 (defn ~remover
       "Removes mapping function from state to

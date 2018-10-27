@@ -157,11 +157,20 @@
     Somewhat -> macro with validators."))
 
 
+(def any-state ::any)
+
+
+(def any-state? (partial = any-state))
+
+
 (def 
   ^{:dynamic true
     :doc "Used by 'make-state-machine' function to create STM."} 
   *stm-constructor* nil)
 
+(defn has-state? [stm state]
+  {:pre [(map? stm)]}
+  (contains? stm state))
 
 (defn get-state-mapping [stm state]
   (when stm (get stm state)))
@@ -169,13 +178,9 @@
 
 (defn get-transitions [stm state]
   (when stm
-    (get (get-state-mapping stm state) :dreamcatcher.core/transitions)))
-
-
-(def any-state ::any)
-
-
-(def any-state? #{::any})
+    (dissoc 
+      (get (get-state-mapping stm state) :dreamcatcher/transitions)
+      any-state)))
 
 
 (defn get-states
@@ -208,17 +213,17 @@
 (defn has-transition? [stm from-state to-state]
   (fn? (-> stm
            (get from-state)
-           :dreamcatcher.core/transitions
+           :dreamcatcher/transitions
            (get to-state))))
 
 
 (defn get-transition [stm from-state to-state]
   (when (has-transition? stm from-state to-state)
-    (-> stm (get from-state) :dreamcatcher.core/transitions (get to-state))))
+    (-> stm (get from-state) :dreamcatcher/transitions (get to-state))))
 
 
 (defn get-validators [stm state]
-  (:dreamcatcher.core/validators (get-state-mapping stm state)))
+  (:dreamcatcher/validators (get-state-mapping stm state)))
 
 
 (defn get-validator [stm state state']
@@ -232,7 +237,7 @@
 
 ;; StateMachine generation
 (defn add-state [stm state]
-  (assert (not (#{:state :data :stm} state)) "[:state :data :stm] are special keys")
+  ; (assert (not (#{:state :data :stm} state)) "[:state :data :stm] are special keys")
   (swap! stm assoc state nil))
 
 
@@ -240,11 +245,8 @@
   (swap! stm #(dissoc % state)))
 
 
-(add-statemachine-mapping validator  ::validators)
-(add-statemachine-mapping transition ::transitions)
-
-
-
+(add-statemachine-mapping validator  :dreamcatcher/validators)
+(add-statemachine-mapping transition :dreamcatcher/transitions)
 
 
 (defn make-state-machine
@@ -255,9 +257,14 @@
 
   \"function\" takes one argument and that is state
   machine instance."
-  ([transitions] (make-state-machine transitions nil))
-  ([transitions validators]
-   (let [stm (atom nil)
+  ([{stm-name :name
+     :keys [transitions validators]
+     :or {stm-name (str (gensym "dreamcatcher/stm_"))}}]
+   (let [stm (atom (with-meta 
+                     {}
+                     {:dreamcatcher/stm stm-name 
+                      :dreamcatcher/transitions [] 
+                      :dreamcatcher/validators []}))
          t (partition 3 transitions)
          v (partition 3 validators)
          states (remove fn? (-> (map #(take 2 %) t) flatten set))]
@@ -271,65 +278,37 @@
   "Macro defines stm with make-state-machine function.
   STM is persistent hash-map."
   [stm-name & [transitions validators]]
-  (if-not validators
-    `(def ~stm-name (make-state-machine ~transitions))
-    `(def ~stm-name (make-state-machine ~transitions ~validators))))
+  `(def ~stm-name 
+     (let [name# "mirko"] 
+       (make-state-machine 
+         (cond-> {}
+           (some? ~stm-name) (assoc :name ~(str *ns* "/" stm-name))
+           (some? ~transitions) (assoc :transitions ~transitions)
+           (some? ~validators) (assoc :validators ~validators))))))
 
 
-;; ALTERNATIVE
-; (defn stm-join 
-;   "Function joins two STMs by merging transitions and validators"
-;   [stm stm']
-;   (let [states (distinct (concat (keys stm) (keys stm')))]
-;     (reduce
-;       (fn [stm state]
-;         (let [transitions (merge-with merge (get-transitions stm state) (get-transitions stm' state))
-;               validators (merge-with merge (get-validators stm state) (get-validators stm' state))]
-;           (cond->
-;             stm
-;             (not (contains? stm state)) (assoc state nil)
-;             (not-empty transitions) (assoc-in [state ::transitions] transitions)
-;             (not-empty validators) (assoc-in [state ::validators] validators))))
-;       stm
-;       states)))
-
-; (defn join-stms [stms]
-;   (reduce stm-join stms))
-
-(defmacro join-stms [& stms] `(merge-with (partial merge-with merge) ~@stms))
+(defn join-stms 
+  "Function joins multiple STMs into one single STM."
+  [stm-name & stms]
+  (let [transitions (reduce concat '() (map (comp :dreamcatcher/transitions meta) (concat [stm-name] stms)))
+        validators (reduce concat '() (map (comp :dreamcatcher/validators meta) (concat [stm-name] stms)))]
+    (make-state-machine 
+      {:name stm-name 
+       :transitions transitions 
+       :validators validators})))
 
 
-;; DEPRECATED
-(defmacro safe
-  "Simple wrapping macro for easier
-  definition. Wraps body in a
-  function THAT returns same argument
-  that was argument. Body is evaluated"
-  [& body]
-  `(fn  [x#]
-     (do ~@body) x#))
-
-
-
-;; DEPRECATED - use as->
-(defmacro with-stm
-  "Macro defines function of one argument
-  with given name.
-
-  (fn [stm-name] &body)
-
-  Make sure that return result is transformed
-  state machine instance"
-  [stm-name & body]
-  `(fn [~stm-name]
-     (do ~@body)))
+(defmacro composed-stm 
+  [stm-name & stms]
+  {:pre [(symbol? stm-name)]}
+  `(def ~stm-name
+     (join-stms ~(str *ns* "/" stm-name) ~@stms)))
 
 
 ;; Machine instance is map that represents
 ;; "real-machine" that has real state and real data
 ;; and has transitions defined in stm input argument
 ;;
-;; (atom {::state nil :data nil :stm nil})
 (defrecord STMInstance [stm state data context]
   STM
   (stm [_] stm)
@@ -342,6 +321,11 @@
   (context [_] context))
 
 
+(def instance-has-state? 
+  "Returns true if"
+  (comp has-state? stm))
+
+
 (defn valid-transition?
   "Computes if transition from-state to to-state is valid.
   If there is any type of validator function than function
@@ -350,7 +334,7 @@
 
   If validator is not a function, transition is not valid."
   [^STMInstance instance from-state to-state]
-  (if-let [vf (get (::validators (get-state-mapping (stm instance) from-state)) to-state)]
+  (if-let [vf (get (:dreamcatcher/validators (get-state-mapping (stm instance) from-state)) to-state)]
     (when (fn? vf)
       (vf instance))
     true))
@@ -365,7 +349,9 @@
    (make-machine-instance stm initial-state nil))
   ([stm initial-state data]
    {:pre [((set (keys stm)) initial-state)]}
-   (STMInstance. stm initial-state data nil)))
+   (make-machine-instance stm initial-state data nil))
+  ([stm initial-state data context]
+   (STMInstance. stm initial-state data context)))
 
 ;; Instance operators
 ;;
@@ -413,7 +399,9 @@
           {:type :dreamcatcher/movement
            :instance instance
            :to-state to-state}))
-      (let [from-state (state instance)
+      (let [moment #?(:clj (System/currentTimeMillis)
+                      :cljs (.getTime (js/Date.)))
+            from-state (state instance)
             tfunction (or (get-transition stm from-state to-state) identity)
             in-fun (or
                      (get-transition stm any-state to-state)
@@ -559,9 +547,18 @@
                               path-left path]
                          (if (= c state') x
                            (if-not (seq path-left) nil
-                             (let [next-x (move x (first path-left))]
+                             (let [next-x (try 
+                                            (move x (first path-left))
+                                            (catch #?(:clj Throwable :cljs js/Error) e
+                                              (throw
+                                                (ex-info 
+                                                  "State couldn't be reached"
+                                                  {:type :dreamcatcher/movement
+                                                   :exception e
+                                                   :instance x}))))]
                                (if (= (state next-x) c) nil
-                                 (recur next-x (state next-x) (rest path-left))))))))]
+                                 (recur next-x (state next-x) (rest path-left))))
+                             ))))]
        (if-let [instance' (some tranverse paths)]
          instance'
          (throw 
@@ -571,13 +568,15 @@
 
 
 (defmacro multimove 
-  "Move STMInstance through series of states."
+  "Move STMInstance through series of states"
   [instance & states]
   (let [movements# (map #(list `move %) states)]
     `(-> ~instance ~@movements#)))
 
 
-(defn to->through [stm target through?]
+(defn to->through 
+  "Function returns paths that contain thgrough state"
+  [instance target through?]
   (filter (partial some through?) (to-> stm target)))
 
 
@@ -586,38 +585,92 @@
 (defn wrap-transitions 
   ([stm function] (wrap-transitions stm function :before))
   ([stm function position?]
-   (let [states (get-states stm)]
+   (let [states (remove #{any-state} (get-states stm))]
      (reduce
        (fn [stm state]
          (reduce
            (fn [stm [to transition]]
-             (update-in stm 
-               [state ::transitions to] 
+             (assoc-in stm 
+               [state :dreamcatcher/transitions to]
                (case position? 
-                 :before comp
-                 :after #(comp %2 %1)) 
-               function))
+                 :before (comp transition function)
+                 :after (comp function transition))))
            stm
            (get-transitions stm state)))
        stm
        states))))
 
+
+(defn any-wrap-any 
+  ([stm f] (any-wrap-any stm f :before))
+  ([stm f position?]
+   (update-in stm [any-state :dreamcatcher/transitions any-state] 
+              (fn [transition] 
+                (case position?
+                  :after (comp f transition)
+                  :before (comp transition f))))))
+
 (defn add-state-history [instance]
   (update-data! 
     instance
     update 
-    ::state-history
-    (fn [history] (conj (or history []) (state instance)))))
+    :dreamcatcher/state-history
+    (fnil conj [])
+    (state instance)))
 
 
-(def get-state-history (comp ::state-history data))
+(def get-state-history (comp :dreamcatcher/state-history data))
+
+
+(defn wrap-transition-duration [stm]
+  (letfn [(now []
+            #?(:clj (System/currentTimeMillis)
+               :cljs (.getTime (js/Date.))))
+          (transition-start [instance]
+            (update-data! instance assoc :dreamcatcher.transition/start (now)))
+          (transition-end [instance]
+            (let [{:keys [:dreamcatcher.transition/start]} (data instance)]
+              (->
+                instance
+                (update-data! update :dreamcatcher/transition-duration 
+                              (fnil conj []) {:start start :end (now)})
+                (update-data! dissoc :dreamcatcher.transition/start))))] 
+    (->
+      stm
+      (wrap-transitions transition-start :before)
+      (wrap-transitions transition-end :after))))
+
+(defn get-transition-duration [instance]
+  (let [{:keys [:dreamcatcher/transition-duration
+                :dreamcatcher/state-history]} (data instance)]
+    (when (not-empty transition-duration)
+      (reduce
+        (fn [r [k {:keys [start end]}]] (assoc r k (- end start)))
+        (array-map)
+        (partition 2 
+                   (interleave 
+                     (map vector (butlast state-history) (rest state-history)) 
+                     transition-duration))))))
 
 (defn add-data-history [instance]
   (update-data! 
     instance
     update 
-    ::data-history
+    :dreamcatcher/data-history
     (fn [history] (conj (or history []) (data instance)))))
 
 
-(def get-data-history (comp ::data-history data))
+(def get-data-history (comp :dreamcatcher/data-history data))
+
+
+
+(comment
+  (defstm fucker [1 2 identity
+                  2 3 identity
+                  3 4 identity])
+  (def f (make-machine-instance 
+           (-> fucker 
+               (wrap-transitions add-state-history)
+               wrap-transition-duration) 
+           1 {:hell 'no}))
+  (def f' (reach-state f 4)))

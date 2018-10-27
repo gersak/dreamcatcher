@@ -134,7 +134,25 @@
   [(states-other-than '1 '2 '6) 6' (constantly false)])
 
 
+(defstm duper
+  [:1 :2 identity
+   :2 :3 identity
+   :3 :4 identity])
+
+(defstm duper'
+  [:3 :4 (fn [instance] (println "ha"))
+   :4 :5 identity
+   :5 :6 identity])
+
+
 
 (def i (make-machine-instance super '2 {}))
 
 
+(d/composed-stm 
+  frankenstein 
+  super duper)
+
+
+(d/composed-stm dementia
+  duper duper')
