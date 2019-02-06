@@ -211,10 +211,11 @@
 
 
 (defn has-transition? [stm from-state to-state]
-  (fn? (-> stm
-           (get from-state)
-           :dreamcatcher/transitions
-           (get to-state))))
+  (fn? 
+    (-> stm
+        (get from-state)
+        :dreamcatcher/transitions
+        (get to-state))))
 
 
 (defn get-transition [stm from-state to-state]
@@ -321,6 +322,9 @@
   (context [_] context))
 
 
+
+
+
 (def instance-has-state? 
   "Returns true if"
   (comp has-state? stm))
@@ -373,8 +377,9 @@
   (when-not (nil? instance)
     (when  (valid-transition? instance from-state to-state)
       (let [new-state (fun instance)]
-        (assert (satisfies? STM instance)
-                (str "Input fun takes old STM instance and produces new STM instance. Please asure that fn: " fun " returns implentation of STM protocol."))
+        (assert 
+          (satisfies? STM instance)
+          (str "Input fun takes old STM instance and produces new STM instance. Please asure that fn: " fun " returns implentation of STM protocol."))
         new-state))))
 
 
@@ -383,7 +388,7 @@
     (boolean (some false? (map = (project state1) (project state2))))))
 
 
-(defn- move-stm
+(defn- ^:no-doc move-stm
   [^STMInstance instance to-state]
   (if-let [stm (stm instance)]
     (do
@@ -413,13 +418,16 @@
                                   (step from-state any-state out-fun)
                                   (step from-state to-state tfunction)
                                   (step any-state to-state in-fun))]
-          (let [new-instance (assoc new-instance :state to-state)]
+          (let [new-instance (if (not= (state instance) (state new-instance)) 
+                               new-instance
+                               (assoc new-instance :state to-state))]
             ;; Add hook for aditional utils spying on instances
             ;; Gets called only when transition already happened
             ;; and doesn't affect new-instance
-            (when-let [always (get-transition stm any-state any-state)]
-              (when (fn? always)
-                (always instance new-instance)))
+            (when (some? new-instance)
+              (when-let [always (get-transition stm any-state any-state)]
+                (when (fn? always)
+                  (always instance new-instance))))
             new-instance)
           instance)))
     (throw
@@ -452,25 +460,37 @@
               ;; TODO - think about necessity for x->any state validator check 
               ;; for candidates. State might change after transition attempt and
               ;; new data might be valid for x->any-state validator
-              (valid-transition? x any-state %))
+              (valid-transition? x any-state %)
+              )
            choices))))))
 
 
 ;; State machine life and behaviour
 (defn- move-to-next-choice [^STMInstance x]
-  (let [choices (-> x context ::life (get (state x)))
-        next-choice (first choices)]
-    (if next-choice
-      (let [new-state (move-stm x next-choice)]
-        (update-context!
-          new-state update-in [::life (state new-state)]
-          #(cond
-             (vector? %) (vec (rest %))
-             :else (concat (rest %) (take 1 %)))))
-      (throw
-        (ex-info 
-          "Instance has no choice whatsoever!"
-          {:instance x})))))
+  (letfn [(rotate-candidates [candidates]
+            (concat (rest candidates) (take 1 candidates)))
+          (pop-candidate [candidates]
+            (vec (rest candidates)))] 
+    (let [candidates (set (candidates? x))
+          life (-> x context ::life (get (state x)))
+          next-choice (some candidates life)]
+      (if (some? next-choice)
+        (let [new-state (move-stm x next-choice)]
+          (update-context!
+            new-state update-in [::life (state x)]
+            #(cond
+               (vector? %) (pop-candidate %) 
+               :else (rotate-candidates %))))
+        (throw
+          (ex-info 
+            (format 
+              "Instance cannot move to one of [%s]. Life priority is [%s]"
+              (clojure.string/join ", " (map str candidates))
+              (clojure.string/join ", " (map str life)))
+            (update-context! x assoc 
+                             ::at #?(:clj (java.util.Date.)
+                                     :cljs (js/Date.))
+                             ::choices (choices? x))))))))
 
 
 ;; Graph tranversing
@@ -527,7 +547,7 @@
   (kill! [this] (update-context! this assoc ::alive? false))
   (act!
     ([this]
-     (assert ((comp ::alive? context) this) "Instance is not alive! First give it life...")
+     (assert (alive? this) "Instance is not alive! First give it life...")
      (loop [new-state (move-to-next-choice this)]
        (if (state-changed? this new-state)
          new-state
@@ -546,25 +566,21 @@
                               c (state instance)
                               path-left path]
                          (if (= c state') x
-                           (if-not (seq path-left) nil
-                             (let [next-x (try 
-                                            (move x (first path-left))
-                                            (catch #?(:clj Throwable :cljs js/Error) e
-                                              (throw
-                                                (ex-info 
-                                                  "State couldn't be reached"
-                                                  {:type :dreamcatcher/movement
-                                                   :exception e
-                                                   :instance x}))))]
-                               (if (= (state next-x) c) nil
-                                 (recur next-x (state next-x) (rest path-left))))
-                             ))))]
-       (if-let [instance' (some tranverse paths)]
+                           (if-not (seq path-left) x
+                             (let [next-x (move x (first path-left))]
+                               (if (= (state next-x) c) x
+                                 (recur next-x (state next-x) (rest path-left))))))))
+           traversed-paths (map tranverse paths)
+           state-reached? (comp (partial = state') state)]
+       (if-let [instance' (some
+                            (fn [instance] (when (state-reached? instance) instance)) 
+                            traversed-paths)]
          instance'
          (throw 
            (ex-info 
              (str "State couldn't be reached " state')
-             instance)))))))
+             {:type :dreamcatcher/reach-state
+              :dreamcatcher/reached-states traversed-paths})))))))
 
 
 (defmacro multimove 
@@ -640,6 +656,7 @@
       (wrap-transitions transition-start :before)
       (wrap-transitions transition-end :after))))
 
+
 (defn get-transition-duration [instance]
   (let [{:keys [:dreamcatcher/transition-duration
                 :dreamcatcher/state-history]} (data instance)]
@@ -652,6 +669,7 @@
                      (map vector (butlast state-history) (rest state-history)) 
                      transition-duration))))))
 
+
 (defn add-data-history [instance]
   (update-data! 
     instance
@@ -663,13 +681,14 @@
 (def get-data-history (comp :dreamcatcher/data-history data))
 
 
-
 (comment
-  (defstm fucker [1 2 identity
-                  2 3 identity
-                  3 4 identity])
+  (defstm lipi
+    [1 2 identity
+     2 3 identity
+     3 4 identity]
+    [3 4 (constantly false)])
   (def f (make-machine-instance 
-           (-> fucker 
+           (-> lipi
                (wrap-transitions add-state-history)
                wrap-transition-duration) 
            1 {:hell 'no}))
