@@ -322,11 +322,8 @@
   (context [_] context))
 
 
-
-
-
 (def instance-has-state? 
-  "Returns true if"
+  "Returns true if STM containse state"
   (comp has-state? stm))
 
 
@@ -356,6 +353,15 @@
    (make-machine-instance stm initial-state data nil))
   ([stm initial-state data context]
    (STMInstance. stm initial-state data context)))
+
+(defn make-some-instance
+  "Development function to create machine instance that has no
+  STM or initial state. Usefull when working on tranistion and
+  validator development."
+  ([] (make-some-instance nil))
+  ([data] (make-some-instance data nil))
+  ([data context]
+   (STMInstance. nil nil data context)))
 
 ;; Instance operators
 ;;
@@ -419,7 +425,10 @@
                                   (step from-state to-state tfunction)
                                   (step any-state to-state in-fun))]
           (let [new-instance (if (not= (state instance) (state new-instance)) 
+                               ;; If something happend during transition that changed
+                               ;; instance state respect that and don't force to-state
                                new-instance
+                               ;; Otherwise replace old state with to-state
                                (assoc new-instance :state to-state))]
             ;; Add hook for aditional utils spying on instances
             ;; Gets called only when transition already happened
@@ -460,8 +469,7 @@
               ;; TODO - think about necessity for x->any state validator check 
               ;; for candidates. State might change after transition attempt and
               ;; new data might be valid for x->any-state validator
-              (valid-transition? x any-state %)
-              )
+              (valid-transition? x any-state %))
            choices))))))
 
 
@@ -694,6 +702,7 @@
      2 3 identity
      3 4 identity]
     [3 4 (constantly false)])
+  (def f' (make-some-instance nil))
   (def f (make-machine-instance 
            (-> lipi
                (wrap-transitions add-state-history)
