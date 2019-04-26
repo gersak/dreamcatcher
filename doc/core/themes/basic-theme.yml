@@ -1,0 +1,8 @@
+heading:
+  font_style: bold
+  h1:
+    font_color: 999999
+    font_style: italic
+    align: right
+  h2:
+    font_color: 444444

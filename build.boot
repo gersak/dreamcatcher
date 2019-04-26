@@ -1,36 +1,41 @@
 (set-env!
-  :source-paths #{"src-cljc"}
-  :dependencies '[[adzerk/boot-cljs "1.7.228-1"]
-                  [org.clojure/clojure "1.8.0"]
-                  [org.clojure/core.async "0.1.346.0-17112a-alpha"]
-                  [org.clojure/clojurescript "1.7.145"]])
+  ; :source-paths #{"src"}
+  :dependencies '[[adzerk/boot-cljs "2.1.5"]
+                  [org.clojure/clojure "1.9.0"]
+                  [org.clojure/core.async "0.4.490"]
+                  [org.clojure/clojurescript "1.10.516"]])
 
 (require '[adzerk.boot-cljs :refer [cljs]])
 
-(def +version+ "1.0.7-SNAPSHOT")
+(def +version+ "1.0.9-SNAPSHOT")
 
 (task-options!
   pom {:project 'kovacnica/dreamcatcher
        :version +version+}
   jar {:manifest {"created-by" "Robert Gersak"}})
 
+(deftask visual []
+  (set-env! :dependencies #(concat % '[[rhizome "0.2.9"]])))
+
 (deftask build
   "Build dreamcatcher and install localy"
   []
-  (set-env! :resource-paths #{"src-cljc"})
+  (set-env! :resource-paths #{"src/core"})
   (comp (pom) (jar) (install)))
 
 (deftask dev
   "Starts up development environment"
   []
-  (set-env! :source-paths #{"dev-src" "src-cljc"})
-  (repl)
+  (set-env! :source-paths #{"dev-src" "src/core" "src/viz"}
+            :dependencies #(concat % '[[rhizome "0.2.9"]]))
   (comp 
     (wait)
-    (repl :server true)))
+    (repl)))
 
 (deftask deploy []
-  (set-env! :resource-paths #{"src-cljc"})
+  (set-env! 
+    :resource-paths #{"src/core"}
+    :source-paths #{})
   (comp 
     (pom)
     (jar)
