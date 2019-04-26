@@ -1,5 +1,5 @@
 (set-env!
-  :source-paths #{"src"}
+  ; :source-paths #{"src"}
   :dependencies '[[adzerk/boot-cljs "2.1.5"]
                   [org.clojure/clojure "1.9.0"]
                   [org.clojure/core.async "0.4.490"]
@@ -7,7 +7,7 @@
 
 (require '[adzerk.boot-cljs :refer [cljs]])
 
-(def +version+ "1.0.8-SNAPSHOT")
+(def +version+ "1.0.9-SNAPSHOT")
 
 (task-options!
   pom {:project 'kovacnica/dreamcatcher
@@ -33,7 +33,9 @@
     (repl)))
 
 (deftask deploy []
-  (set-env! :resource-paths #{"src/core"})
+  (set-env! 
+    :resource-paths #{"src/core"}
+    :source-paths #{})
   (comp 
     (pom)
     (jar)

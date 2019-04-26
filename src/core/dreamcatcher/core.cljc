@@ -680,6 +680,13 @@
 
 (def get-data-history (comp :dreamcatcher/data-history data))
 
+(defmacro embed 
+  "Macro to embed arguments to input function. Mostly for composition
+  of transitions. Macro returs function that returns function
+  with embeded arguments."
+  [f & args]
+  `(fn ~'f [instance#] (~f instance# ~@args)))
+
 
 (comment
   (defstm lipi
