@@ -690,8 +690,7 @@
 
 (defmacro embed 
   "Macro to embed arguments to input function. Mostly for composition
-  of transitions. Macro returs function that returns function
-  with embeded arguments."
+  of transitions. Macro returs function that returns f with embeded arguments."
   [f & args]
   `(fn ~'f [instance#] (~f instance# ~@args)))
 
