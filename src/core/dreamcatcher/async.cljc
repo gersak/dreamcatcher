@@ -138,11 +138,10 @@
                          (when-not (or (= any-state s) (= any-state (key transition)))
                            (let [target-state (key transition)
                                  transition-channel (val transition)]
-                             ;; Tap transition to source-state
                              (when transition-channel
-                               (tap (get mult-states s) transition-channel))
-                             ;; And add output from transition channel to target state
-                             (when transition-channel
+                               ;; Tap transition to source-state
+                               (tap (get mult-states s) transition-channel)
+                               ;; And add output from transition channel to target state
                                (admix (get mix-states target-state) transition-channel)))))]
     ;; Make connections between states through transition-channels
     (doseq [s states transition (get transition-channels s)]

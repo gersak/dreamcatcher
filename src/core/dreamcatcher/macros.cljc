@@ -15,11 +15,11 @@
       [stm# from-state# to-state# fun#]
       (let [from-states# (cond
                            (fn? from-state#) (from-state#)
-                           (false? (coll? from-state#)) (list from-state#)
+                           (false? (seq? from-state#)) (list from-state#)
                            :else from-state#)
             to-states# (cond
                          (fn? to-state#) (to-state#)
-                         (false? (coll? to-state#)) (list to-state#)
+                         (false? (seq? to-state#)) (list to-state#)
                          :else to-state#)]
             (map #(assert (contains? @stm# %) (str "There is no " % " in " stm#)) from-states#)
             (map #(assert (contains? @stm# %) (str "There is no " %" in " stm#)) to-states#)
@@ -33,7 +33,7 @@
                                 (some? (get cm# y#))
                                 (not= fun# (get cm# y#)))
                          #?(:clj (println (str "WARN: Overwriting " (get mm# :dreamcatcher/stm) " " ~(str fun-name) " " (pr-str x#) " -> " (pr-str y#)))
-                            :cljs (.log js/console (str "WARN: Overwriting " (get mm# :dreamcatcher/stm) " " ~(str fun-name) " " (pr-str x#) " -> " (pr-str y#)))))
+                            :cljs (.warn js/console (str "Overwriting " (get mm# :dreamcatcher/stm) " " ~(str fun-name) " " (pr-str x#) " -> " (pr-str y#)))))
                         (reset! stm# 
                                (with-meta 
                                      (assoc-in @stm# [x# ~mapping] nm#)

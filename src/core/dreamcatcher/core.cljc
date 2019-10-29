@@ -268,24 +268,55 @@
                       :dreamcatcher/validators []}))
          t (partition 3 transitions)
          v (partition 3 validators)
-         states (remove fn? (-> (map #(take 2 %) t) flatten set))]
+         states (remove fn? (reduce
+                              (fn [result [from to f]]
+                                (cond-> result
+                                  (seq? from) (clojure.set/union (set from))
+                                  (seq? to) (clojure.set/union (set to))
+                                  (not (seq? from)) (conj from)
+                                  (not (seq? to)) (conj to)))
+                              #{}
+                              (map #(take 2 %) t)))]
      (binding [*stm-constructor* stm]
        (doseq [x states] (add-state stm x))
        (doseq [x t] (apply add-transition (conj x stm)))
        (doseq [x v] (apply add-validator (conj x stm)))
        @stm))))
 
+
+(defn start-candidates?
+  [stm']
+  (let [states (set (keys stm'))]
+    (loop [candidates states
+           [[k {targets :dreamcatcher/transitions} :as to-mapping] & others] stm']
+      (if (empty? candidates)
+        #{}
+        (if (empty? to-mapping)
+          candidates
+          (recur
+            (clojure.set/difference candidates (set (keys targets)))
+            others))))))
+
+
+(defn end-candidates?
+  [stm']
+  (reduce
+    (fn [result [k {targets :dreamcatcher/transitions}]]
+      (if (empty? targets) (conj result k) result))
+    #{}
+    stm'))
+
+
 (defmacro defstm
   "Macro defines stm with make-state-machine function.
   STM is persistent hash-map."
   [stm-name & [transitions validators]]
   `(def ~stm-name 
-     (let [name# "mirko"] 
-       (make-state-machine 
-         (cond-> {}
-           (some? ~stm-name) (assoc :name ~(str *ns* "/" stm-name))
-           (some? ~transitions) (assoc :transitions ~transitions)
-           (some? ~validators) (assoc :validators ~validators))))))
+     (make-state-machine 
+       (cond-> {}
+         (some? ~stm-name) (assoc :name ~(str *ns* "/" stm-name))
+         (some? ~transitions) (assoc :transitions ~transitions)
+         (some? ~validators) (assoc :validators ~validators)))))
 
 
 (defn join-stms 
@@ -491,7 +522,8 @@
                :else (rotate-candidates %))))
         (throw
           (ex-info 
-            (format 
+            (#?(:clj format
+                :cljs goog.string/format) 
               "Instance cannot move to one of [%s]. Life priority is [%s]"
               (clojure.string/join ", " (map str candidates))
               (clojure.string/join ", " (map str life)))
