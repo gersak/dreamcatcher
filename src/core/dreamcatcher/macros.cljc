@@ -1,7 +1,5 @@
 (ns dreamcatcher.macros)
 
-(def ^:dynamic *warn-on-duplicate* true)
-
 (defmacro add-statemachine-mapping [fun-name mapping]
       "Creates two funcitons with prefixes add- and remove-
       attached to \"fun-name\""
@@ -14,30 +12,31 @@
       state with input function"
       [stm# from-state# to-state# fun#]
       (let [from-states# (cond
-                           (fn? from-state#) (from-state#)
-                           (false? (seq? from-state#)) (list from-state#)
-                           :else from-state#)
+                               (fn? from-state#) (from-state#)
+                               (false? (sequential? from-state#)) (list from-state#)
+                               :else from-state#)
             to-states# (cond
-                         (fn? to-state#) (to-state#)
-                         (false? (seq? to-state#)) (list to-state#)
-                         :else to-state#)]
+                             (fn? to-state#) (to-state#)
+                             (false? (sequential? to-state#)) (list to-state#)
+                             :else to-state#)]
             (map #(assert (contains? @stm# %) (str "There is no " % " in " stm#)) from-states#)
             (map #(assert (contains? @stm# %) (str "There is no " %" in " stm#)) to-states#)
             (doseq [x# from-states# y# to-states#]
                   (let [cm# (get-in @stm# [x# ~mapping])
-                        ; nm# (reduce conj (array-map) (conj cm# [y# fun#]))
                         nm# (assoc cm# y# fun#)
                         mm# (meta @stm#)]
-                        ; (clojure.core/println "HI")
                         (when (and
+                                dreamcatcher.core/*warn-on-duplicate*
                                 (some? (get cm# y#))
                                 (not= fun# (get cm# y#)))
-                         #?(:clj (println (str "WARN: Overwriting " (get mm# :dreamcatcher/stm) " " ~(str fun-name) " " (pr-str x#) " -> " (pr-str y#)))
-                            :cljs (.warn js/console (str "Overwriting " (get mm# :dreamcatcher/stm) " " ~(str fun-name) " " (pr-str x#) " -> " (pr-str y#)))))
+                          (dreamcatcher.core/warn 
+                                (str "WARN: Overwriting " 
+                                     (get mm# :dreamcatcher/stm) " " ~(str fun-name) 
+                                     " " (pr-str x#) " -> " (pr-str y#))))
                         (reset! stm# 
-                               (with-meta 
-                                     (assoc-in @stm# [x# ~mapping] nm#)
-                                     (update mm# ~mapping conj from-state# to-state# fun#)))))))
+                                (with-meta 
+                                      (assoc-in @stm# [x# ~mapping] nm#)
+                                      (update mm# ~mapping conj from-state# to-state# fun#)))))))
 
 (defn ~remover
       "Removes mapping function from state to

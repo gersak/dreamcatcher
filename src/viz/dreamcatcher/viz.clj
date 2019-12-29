@@ -12,18 +12,27 @@
       {}
       states)))
 
-(defn draw-stm [stm]
-  (let [graph (get-viz-graph stm)] 
-    (view-graph (keys graph) graph
-                :node->descriptor (fn [n] {:label (name n)}))))
+(defn draw-stm 
+  ([stm] (draw-stm :name))
+  ([stm label] (draw-stm stm label (constantly "")))
+  ([stm label edge]
+   (let [graph (get-viz-graph stm)] 
+     (view-graph (keys graph) graph
+                 :node->descriptor (fn [n] 
+                                     {:label (label n)})
+                 :edge->descriptor (fn [f t] {:label (edge f t)})))))
 
 
-(defn print-stm [stm filename]
-  (let [graph (get-viz-graph stm)]
-    (save-graph 
-      (keys graph) graph
-      :node->descriptor (fn [n] {:label (name n)})
-      :filename filename)))
+(defn print-stm 
+  ([stm filename] (print-stm stm name (constantly "") filename))
+  ([stm label filename] (print-stm stm label (constantly "") filename))
+  ([stm label edge filename]
+   (let [graph (get-viz-graph stm)]
+     (save-graph 
+       (keys graph) graph
+       :node->descriptor (fn [n] {:label (label n)})
+       :edge->descriptor (fn [f t] {:label (edge f t)})
+       :filename filename))))
 
 
 (comment

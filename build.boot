@@ -7,7 +7,7 @@
 
 (require '[adzerk.boot-cljs :refer [cljs]])
 
-(def +version+ "1.0.9-SNAPSHOT")
+(def +version+ "1.1.0-SNAPSHOT")
 
 (task-options!
   pom {:project 'kovacnica/dreamcatcher

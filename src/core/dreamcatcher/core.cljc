@@ -236,6 +236,12 @@
 ;; transition is valid to happen or not.
 
 
+(def ^:dynamic *warn-on-duplicate* true)
+
+(defn warn [message]
+  #?(:clj (println message)
+     :cljs (.warn js/console message)))
+
 ;; StateMachine generation
 (defn add-state [stm state]
   ; (assert (not (#{:state :data :stm} state)) "[:state :data :stm] are special keys")
@@ -269,14 +275,14 @@
          t (partition 3 transitions)
          v (partition 3 validators)
          states (remove fn? (reduce
-                              (fn [result [from to f]]
+                              (fn [result [from to _]]
                                 (cond-> result
-                                  (seq? from) (clojure.set/union (set from))
-                                  (seq? to) (clojure.set/union (set to))
-                                  (not (seq? from)) (conj from)
-                                  (not (seq? to)) (conj to)))
+                                  (sequential? from) (clojure.set/union (set from))
+                                  (sequential? to) (clojure.set/union (set to))
+                                  (not (sequential? from)) (conj from)
+                                  (not (sequential? to)) (conj to)))
                               #{}
-                              (map #(take 2 %) t)))]
+                              t))]
      (binding [*stm-constructor* stm]
        (doseq [x states] (add-state stm x))
        (doseq [x t] (apply add-transition (conj x stm)))
@@ -292,7 +298,7 @@
       (if (empty? candidates)
         #{}
         (if (empty? to-mapping)
-          candidates
+          (dissoc candidates any-state)
           (recur
             (clojure.set/difference candidates (set (keys targets)))
             others))))))
@@ -441,9 +447,7 @@
           {:type :dreamcatcher/movement
            :instance instance
            :to-state to-state}))
-      (let [moment #?(:clj (System/currentTimeMillis)
-                      :cljs (.getTime (js/Date.)))
-            from-state (state instance)
+      (let [from-state (state instance)
             tfunction (or (get-transition stm from-state to-state) identity)
             in-fun (or
                      (get-transition stm any-state to-state)
@@ -620,7 +624,7 @@
            (ex-info 
              (str "State couldn't be reached " state')
              {:type :dreamcatcher/reach-state
-              :dreamcatcher/reached-states traversed-paths})))))))
+              :dreamcatcher/reached-states (distinct (map state traversed-paths))})))))))
 
 
 (defmacro multimove 
