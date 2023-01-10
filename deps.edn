@@ -1,5 +1,8 @@
 {:deps
  {org.clojure/clojure {:mvn/version "1.10.1"}
-  org.clojure/clojurescript {:mvn/version "1.10.520"}
   org.clojure/core.async {:mvn/version "0.4.474"}}
+ :aliases
+ {:frontend
+  {:extra-deps
+   {org.clojure/clojurescript {:mvn/version "1.10.520"}}}}
  :paths ["src/core"]}

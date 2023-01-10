@@ -1,8 +1,9 @@
 (ns dreamcatcher.macros)
 
-(defmacro add-statemachine-mapping [fun-name mapping]
+(defmacro add-statemachine-mapping
       "Creates two funcitons with prefixes add- and remove-
       attached to \"fun-name\""
+      [fun-name mapping]
       (let [adder (symbol (str "add-" fun-name))
             remover (symbol (str "remove-" fun-name))]
             `(do
@@ -26,13 +27,13 @@
                         nm# (assoc cm# y# fun#)
                         mm# (meta @stm#)]
                         (when (and
-                                dreamcatcher.core/*warn-on-duplicate*
-                                (some? (get cm# y#))
-                                (not= fun# (get cm# y#)))
-                          (dreamcatcher.core/warn 
-                                (str "WARN: Overwriting " 
-                                     (get mm# :dreamcatcher/stm) " " ~(str fun-name) 
-                                     " " (pr-str x#) " -> " (pr-str y#))))
+dreamcatcher.core/*warn-on-duplicate*
+(some? (get cm# y#))
+(not= fun# (get cm# y#)))
+                              (dreamcatcher.core/warn 
+                                    (str "WARN: Overwriting " 
+                                         (get mm# :dreamcatcher/stm) " " ~(str fun-name) 
+                                         " " (pr-str x#) " -> " (pr-str y#))))
                         (reset! stm# 
                                 (with-meta 
                                       (assoc-in @stm# [x# ~mapping] nm#)

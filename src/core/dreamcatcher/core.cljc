@@ -3,6 +3,8 @@
              [dreamcatcher.macros :refer [add-statemachine-mapping]]))
   (:refer-clojure :exclude [get-validator])
   (:require 
+    clojure.set
+    clojure.string
     #?(:clj [dreamcatcher.macros :refer [add-statemachine-mapping]])))
 
 
@@ -294,7 +296,7 @@
   [stm']
   (let [states (set (keys stm'))]
     (loop [candidates states
-           [[k {targets :dreamcatcher/transitions} :as to-mapping] & others] stm']
+           [[_ {targets :dreamcatcher/transitions} :as to-mapping] & others] stm']
       (if (empty? candidates)
         #{}
         (if (empty? to-mapping)
@@ -547,7 +549,9 @@
      nil
      (let [stm (if direct? (dissoc stm any-state) stm)]
        (letfn [(visited? [path state]
-                 (not= -1 (.indexOf #?(:clj path :cljs (clj->js path)) state)))
+                 (some #(= % state) path)
+                 ;; This doesn't work with babashka
+                 #_(not= -1 (.indexOf #?(:clj path :cljs (clj->js path)) state)))
                (generate-paths [current-path]
                  (let [c (last current-path)]
                    (if-not (= c end)
@@ -567,7 +571,9 @@
          (loop [paths [[]]]
            (let [new-paths (reduce into #{} (map generate-paths paths))]
              (if (= new-paths paths) (->> paths
-                                          (remove #(= -1 (.indexOf % #?(:clj end :cljs (clj->js end))) ))
+                                          (remove (fn [path] (not-any? #(= % end) path)))
+                                          ;; This doesn't work with babashka
+                                          ; (remove #(= -1 (.indexOf % #?(:clj end :cljs (clj->js end)))))
                                           (sort-by count))
                (recur new-paths)))))))))
 
@@ -602,7 +608,7 @@
      (from->to (stm this) (state this) target true)))
   (reach-state
     ([instance state']
-     (let [stm (stm instance)
+     (let [;stm (stm instance)
            paths (to-> instance state')
            move (memoize move) ;; Do not apply transitions more than once per try
            tranverse (fn [path]
@@ -636,7 +642,7 @@
 
 (defn to->through 
   "Function returns paths that contain thgrough state"
-  [instance target through?]
+  [_ target through?]
   (filter (partial some through?) (to-> stm target)))
 
 
@@ -736,11 +742,12 @@
     [1 2 identity
      2 3 identity
      3 4 identity]
-    [3 4 (constantly false)])
+    #_[3 4 (constantly false)])
   (def f' (make-some-instance nil))
   (def f (make-machine-instance 
            (-> lipi
                (wrap-transitions add-state-history)
                wrap-transition-duration) 
            1 {:hell 'no}))
-  (def f' (reach-state f 4)))
+  (def f' (reach-state f 4))
+  (state f'))
